@@ -1,4 +1,4 @@
-name: media_downloader
+name: media_planner
 description: >-
   Reads HLS, DASH and direct-file sources, picks tracks by language and
   quality, and plans and assembles their download (local HLS package or MKV

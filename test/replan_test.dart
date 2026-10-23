@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:media_downloader/media_downloader.dart';
+import 'package:media_planner/media_planner.dart';
 import 'package:test/test.dart';
 
 /// A DASH like the ones a signed CDN mints: the token rides the query of

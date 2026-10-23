@@ -1,7 +1,7 @@
-import 'package:media_downloader/src/media_options.dart';
-import 'package:media_downloader/src/plan.dart';
-import 'package:media_downloader/src/sources/resolved_source.dart';
-import 'package:media_downloader/src/sources/source_fetcher.dart';
+import 'package:media_planner/src/media_options.dart';
+import 'package:media_planner/src/plan.dart';
+import 'package:media_planner/src/sources/resolved_source.dart';
+import 'package:media_planner/src/sources/source_fetcher.dart';
 import 'package:meta/meta.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart' as p;

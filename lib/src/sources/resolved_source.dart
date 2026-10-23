@@ -1,10 +1,10 @@
 import 'dart:math';
 
-import 'package:media_downloader/src/language_codes.dart';
-import 'package:media_downloader/src/media_options.dart';
-import 'package:media_downloader/src/plan.dart';
-import 'package:media_downloader/src/sources/source_request.dart';
-import 'package:media_downloader/src/track_criteria.dart';
+import 'package:media_planner/src/language_codes.dart';
+import 'package:media_planner/src/media_options.dart';
+import 'package:media_planner/src/plan.dart';
+import 'package:media_planner/src/sources/source_request.dart';
+import 'package:media_planner/src/track_criteria.dart';
 import 'package:path/path.dart' as p;
 
 /// A source already inspected: what it offers (qualities, audios, subtitles)

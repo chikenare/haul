@@ -1,4 +1,4 @@
-import 'package:media_downloader/media_downloader.dart';
+import 'package:media_planner/media_planner.dart';
 import 'package:test/test.dart';
 
 /// Los manifiestos casi nunca traen URLs completas: se resuelven contra la

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:media_downloader/media_downloader.dart';
+import 'package:media_planner/media_planner.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 

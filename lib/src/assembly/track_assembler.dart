@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:media_downloader/src/assembly/mux_input.dart';
-import 'package:media_downloader/src/assembly/segment_playlist.dart';
-import 'package:media_downloader/src/errors.dart';
-import 'package:media_downloader/src/plan.dart';
+import 'package:media_planner/src/assembly/mux_input.dart';
+import 'package:media_planner/src/assembly/segment_playlist.dart';
+import 'package:media_planner/src/errors.dart';
+import 'package:media_planner/src/plan.dart';
 import 'package:path/path.dart' as p;
 
 /// Turns a track's fetched pieces into something ffmpeg or a player opens

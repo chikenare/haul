@@ -1,7 +1,7 @@
-# media_downloader
+# media_planner
 
-Shared download core for the Flutter apps that save HLS, DASH and direct files
-for offline playback.
+Plans downloads of HLS, DASH and direct files for offline playback — it does
+not fetch anything itself.
 
 - **Sources** — `SourceResolver` tells HLS, DASH and plain files apart by
   content (not URL), parses the manifest and exposes its qualities, audios and

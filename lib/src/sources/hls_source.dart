@@ -1,11 +1,11 @@
 import 'dart:convert';
 
-import 'package:media_downloader/src/errors.dart';
-import 'package:media_downloader/src/manifest/hls_parser.dart';
-import 'package:media_downloader/src/media_options.dart';
-import 'package:media_downloader/src/plan.dart';
-import 'package:media_downloader/src/sources/resolved_source.dart';
-import 'package:media_downloader/src/sources/source_fetcher.dart';
+import 'package:media_planner/src/errors.dart';
+import 'package:media_planner/src/manifest/hls_parser.dart';
+import 'package:media_planner/src/media_options.dart';
+import 'package:media_planner/src/plan.dart';
+import 'package:media_planner/src/sources/resolved_source.dart';
+import 'package:media_planner/src/sources/source_fetcher.dart';
 
 /// An HLS. With a master there are a quality, audios and subtitles to pick;
 /// with a lone media playlist there is one track to fetch.

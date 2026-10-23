@@ -1,4 +1,4 @@
-import 'package:media_downloader/src/plan.dart';
+import 'package:media_planner/src/plan.dart';
 
 /// A track ready for ffmpeg.
 class MuxInput {
