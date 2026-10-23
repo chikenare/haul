@@ -1,0 +1,26 @@
+name: media_downloader
+description: >-
+  Reads HLS, DASH and direct-file sources, picks tracks by language and
+  quality, and plans and assembles their download (local HLS package or MKV
+  arguments). Pure Dart: each app keeps its own queue, storage and ffmpeg.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  collection: ^1.19.0
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.9.0
+  meta: ^1.16.0
+  mime: ^2.0.0
+  path: ^1.9.0
+  xml: ^7.0.0
+
+dev_dependencies:
+  build_runner: ^2.10.0
+  freezed: ^3.2.0
+  json_serializable: ^6.11.0
+  lints: ^6.0.0
+  test: ^1.25.0
