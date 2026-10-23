@@ -33,14 +33,16 @@ String _mpd(String token) =>
   </Period>
 </MPD>''';
 
-Future<DownloadPlan> _plan(String token, TrackCriteria criteria) async {
-  final source = DashSource(
-    const SourceRequest(url: 'https://cdn.example.com/v/manifest.mpd'),
-    DashParser.parse(
-      _mpd(token),
-      Uri.parse('https://cdn.example.com/v/manifest.mpd'),
-    ),
-  );
+DashSource _source(String token) => DashSource(
+  const SourceRequest(url: 'https://cdn.example.com/v/manifest.mpd'),
+  DashParser.parse(
+    _mpd(token),
+    Uri.parse('https://cdn.example.com/v/manifest.mpd'),
+  ),
+);
+
+Future<DownloadPlan> _plan(String token, TrackCriteria criteria) {
+  final source = _source(token);
   return source.plan(source.selectionFor(criteria));
 }
 
@@ -88,4 +90,41 @@ void main() {
     expect(video.hasSegmentPlaylist, isTrue);
     expect(video.segmentPlaylist, contains('#EXT-X-MAP:URI="0.mp4"'));
   });
+
+  test(
+    "a fresh link keeps the plan's choice, not today's preferences",
+    () async {
+      final before = await _plan('expired', criteria);
+      final fresh = _source('fresh');
+
+      // The account switched to English meanwhile: the pieces on disk are
+      // the Latin American audio, so the fresh plan must be that one too.
+      final selection = fresh.selectionOf(before)!;
+      final after = await fresh.plan(selection);
+
+      expect(after.linesUpWith(before), isTrue);
+      expect(after.tracks.last.sourceId, 'a-lat');
+    },
+  );
+
+  test(
+    'a plan that names a track the source dropped does not line up',
+    () async {
+      final before = await _plan('a', criteria);
+      final gone = before.copyWith(
+        tracks: [
+          before.tracks.first,
+          before.tracks.last.copyWith(sourceId: 'a-fr'),
+        ],
+      );
+
+      expect(_source('b').selectionOf(gone), isNull);
+      expect(
+        before.linesUpWith(
+          before.copyWith(tracks: before.tracks.take(1).toList()),
+        ),
+        isFalse,
+      );
+    },
+  );
 }

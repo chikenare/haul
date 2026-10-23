@@ -9,34 +9,61 @@ String iso6392(String? bcp47) {
   return _iso6391[primary] ?? 'und';
 }
 
+// Every ISO 639-1 code (all 183) with its ISO 639-2/T form, plus the
+// withdrawn ones that still turn up in old manifests (`iw`, `in`, `ji`,
+// `mo`). Fixed by the standard: it does not grow.
 const _iso6391 = {
-  'af': 'afr', 'am': 'amh', 'ar': 'ara', 'az': 'aze', 'be': 'bel', //
-  'bg': 'bul', 'bn': 'ben', 'bs': 'bos', 'ca': 'cat', 'cs': 'ces',
-  'cy': 'cym', 'da': 'dan', 'de': 'deu', 'el': 'ell', 'en': 'eng',
-  'es': 'spa', 'et': 'est', 'eu': 'eus', 'fa': 'fas', 'fi': 'fin',
-  'fr': 'fra', 'ga': 'gle', 'gl': 'glg', 'gu': 'guj',
-  'he': 'heb', 'hi': 'hin', 'hr': 'hrv', 'hu': 'hun', 'hy': 'hye',
-  'id': 'ind', 'is': 'isl', 'it': 'ita', 'iw': 'heb', 'ja': 'jpn',
-  'ka': 'kat', 'kk': 'kaz', 'km': 'khm', 'kn': 'kan', 'ko': 'kor',
-  'lo': 'lao', 'lt': 'lit', 'lv': 'lav', 'mk': 'mkd', 'ml': 'mal',
-  'mn': 'mon', 'mr': 'mar', 'ms': 'msa', 'my': 'mya', 'nb': 'nob',
-  'ne': 'nep', 'nl': 'nld', 'nn': 'nno', 'no': 'nor', 'pa': 'pan',
-  'pl': 'pol', 'pt': 'por', 'ro': 'ron', 'ru': 'rus', 'si': 'sin',
-  'sk': 'slk', 'sl': 'slv', 'sq': 'sqi', 'sr': 'srp', 'sv': 'swe',
-  'sw': 'swa', 'ta': 'tam', 'te': 'tel', 'th': 'tha', 'tl': 'tgl',
-  'tr': 'tur', 'uk': 'ukr', 'ur': 'urd', 'uz': 'uzb', 'vi': 'vie',
-  'zh': 'zho', 'zu': 'zul',
+  'aa': 'aar', 'ab': 'abk', 'ae': 'ave', 'af': 'afr', 'ak': 'aka', //
+  'am': 'amh', 'an': 'arg', 'ar': 'ara', 'as': 'asm', 'av': 'ava',
+  'ay': 'aym', 'az': 'aze', 'ba': 'bak', 'be': 'bel', 'bg': 'bul',
+  'bi': 'bis', 'bm': 'bam', 'bn': 'ben', 'bo': 'bod', 'br': 'bre',
+  'bs': 'bos', 'ca': 'cat', 'ce': 'che', 'ch': 'cha', 'co': 'cos',
+  'cr': 'cre', 'cs': 'ces', 'cu': 'chu', 'cv': 'chv', 'cy': 'cym',
+  'da': 'dan', 'de': 'deu', 'dv': 'div', 'dz': 'dzo', 'ee': 'ewe',
+  'el': 'ell', 'en': 'eng', 'eo': 'epo', 'es': 'spa', 'et': 'est',
+  'eu': 'eus', 'fa': 'fas', 'ff': 'ful', 'fi': 'fin', 'fj': 'fij',
+  'fo': 'fao', 'fr': 'fra', 'fy': 'fry', 'ga': 'gle', 'gd': 'gla',
+  'gl': 'glg', 'gn': 'grn', 'gu': 'guj', 'gv': 'glv', 'ha': 'hau',
+  'he': 'heb', 'hi': 'hin', 'ho': 'hmo', 'hr': 'hrv', 'ht': 'hat',
+  'hu': 'hun', 'hy': 'hye', 'hz': 'her', 'ia': 'ina', 'id': 'ind',
+  'ie': 'ile', 'ig': 'ibo', 'ii': 'iii', 'ik': 'ipk', 'io': 'ido',
+  'is': 'isl', 'it': 'ita', 'iu': 'iku', 'ja': 'jpn', 'jv': 'jav',
+  'ka': 'kat', 'kg': 'kon', 'ki': 'kik', 'kj': 'kua', 'kk': 'kaz',
+  'kl': 'kal', 'km': 'khm', 'kn': 'kan', 'ko': 'kor', 'kr': 'kau',
+  'ks': 'kas', 'ku': 'kur', 'kv': 'kom', 'kw': 'cor', 'ky': 'kir',
+  'la': 'lat', 'lb': 'ltz', 'lg': 'lug', 'li': 'lim', 'ln': 'lin',
+  'lo': 'lao', 'lt': 'lit', 'lu': 'lub', 'lv': 'lav', 'mg': 'mlg',
+  'mh': 'mah', 'mi': 'mri', 'mk': 'mkd', 'ml': 'mal', 'mn': 'mon',
+  'mr': 'mar', 'ms': 'msa', 'mt': 'mlt', 'my': 'mya', 'na': 'nau',
+  'nb': 'nob', 'nd': 'nde', 'ne': 'nep', 'ng': 'ndo', 'nl': 'nld',
+  'nn': 'nno', 'no': 'nor', 'nr': 'nbl', 'nv': 'nav', 'ny': 'nya',
+  'oc': 'oci', 'oj': 'oji', 'om': 'orm', 'or': 'ori', 'os': 'oss',
+  'pa': 'pan', 'pi': 'pli', 'pl': 'pol', 'ps': 'pus', 'pt': 'por',
+  'qu': 'que', 'rm': 'roh', 'rn': 'run', 'ro': 'ron', 'ru': 'rus',
+  'rw': 'kin', 'sa': 'san', 'sc': 'srd', 'sd': 'snd', 'se': 'sme',
+  'sg': 'sag', 'si': 'sin', 'sk': 'slk', 'sl': 'slv', 'sm': 'smo',
+  'sn': 'sna', 'so': 'som', 'sq': 'sqi', 'sr': 'srp', 'ss': 'ssw',
+  'st': 'sot', 'su': 'sun', 'sv': 'swe', 'sw': 'swa', 'ta': 'tam',
+  'te': 'tel', 'tg': 'tgk', 'th': 'tha', 'ti': 'tir', 'tk': 'tuk',
+  'tl': 'tgl', 'tn': 'tsn', 'to': 'ton', 'tr': 'tur', 'ts': 'tso',
+  'tt': 'tat', 'tw': 'twi', 'ty': 'tah', 'ug': 'uig', 'uk': 'ukr',
+  'ur': 'urd', 'uz': 'uzb', 've': 'ven', 'vi': 'vie', 'vo': 'vol',
+  'wa': 'wln', 'wo': 'wol', 'xh': 'xho', 'yi': 'yid', 'yo': 'yor',
+  'za': 'zha', 'zh': 'zho', 'zu': 'zul',
+  // Withdrawn, still in the wild.
+  'iw': 'heb', 'in': 'ind', 'ji': 'yid', 'mo': 'ron',
 };
 
 /// No language, several, or none: they identify nothing.
 const _unknown = {'und', 'mul', 'zxx', 'mis'};
 
-/// Bibliographic → terminologic, for the ones that differ.
+/// Bibliographic → terminologic: the twenty ISO 639-2 languages with two
+/// codes. Players read the terminologic one.
 const _bibliographic = {
   'alb': 'sqi', 'arm': 'hye', 'baq': 'eus', 'bur': 'mya', 'chi': 'zho', //
   'cze': 'ces', 'dut': 'nld', 'fre': 'fra', 'geo': 'kat', 'ger': 'deu',
-  'gre': 'ell', 'ice': 'isl', 'mac': 'mkd', 'may': 'msa', 'per': 'fas',
-  'rum': 'ron', 'slo': 'slk', 'tib': 'bod', 'wel': 'cym',
+  'gre': 'ell', 'ice': 'isl', 'mac': 'mkd', 'mao': 'mri', 'may': 'msa',
+  'per': 'fas', 'rum': 'ron', 'slo': 'slk', 'tib': 'bod', 'wel': 'cym',
 };
 
 /// Whether [a] and [b] are the same language however they are written
@@ -57,6 +84,7 @@ const _nativeNames = {
   'de': 'deutsch',
   'ja': '日本語',
   'ko': '한국어',
+  'zh': '中文',
 };
 
 /// English names, the other common way to label them.
@@ -69,16 +97,22 @@ const _englishNames = {
   'de': 'german',
   'ja': 'japanese',
   'ko': 'korean',
+  'zh': 'chinese',
 };
 
 /// Other names a language is labelled with.
 const _aliases = {
   'es': ['castellano', 'latino'],
+  'zh': [
+    'mandarin', 'cantonese', '普通话', '國語', '粵語', '粤语', //
+    '繁體中文', '繁体中文', '简体中文', '簡體中文',
+  ],
 };
 
 /// Variants labels spell out in words: `Español (Latino)`,
-/// `Portuguese (Brazil)`. Looked for anywhere in the label.
-const _labelRegions = {
+/// `Portuguese (Brazil)`, `Chinese (Traditional)`. Looked for anywhere in
+/// the label; for Chinese the variant is the script, not a country.
+const _labelVariants = {
   'es': {
     '419': ['latino', 'latinoam', 'latam', 'latin america', 'méxico'],
     'ES': ['castellano', 'castilian', 'españa', 'spain', 'european'],
@@ -86,6 +120,10 @@ const _labelRegions = {
   'pt': {
     'BR': ['brasil', 'brazil'],
     'PT': ['portugal', 'european'],
+  },
+  'zh': {
+    'Hant': ['traditional', '繁體', '繁体', 'cantonese', '粵語', '粤语'],
+    'Hans': ['simplified', '简体', '簡體', 'mandarin', '普通话'],
   },
 };
 
@@ -104,7 +142,7 @@ String? languageOfLabel(String? label) {
     if (!names.any(value.startsWith)) continue;
 
     for (final MapEntry(key: region, value: words)
-        in (_labelRegions[code] ?? const <String, List<String>>{}).entries) {
+        in (_labelVariants[code] ?? const <String, List<String>>{}).entries) {
       if (words.any(value.contains)) return '$code-$region';
     }
     return code;
@@ -114,13 +152,13 @@ String? languageOfLabel(String? label) {
 
 /// A track's language: the declared one or, without it, the label's. When
 /// the code carries no variant and the label does, the label's wins:
-/// `es` + `Español (Latino)` → `es-419`.
+/// `es` + `Español (Latino)` → `es-419`, `zh` + `繁體中文` → `zh-Hant`.
 String? trackLanguage(String? declared, String? label) {
   final fromLabel = languageOfLabel(label);
   if (declared == null) return fromLabel;
   if (fromLabel != null &&
-      regionOf(declared) == null &&
-      regionOf(fromLabel) != null &&
+      _variantOf(declared) == null &&
+      _variantOf(fromLabel) != null &&
       sameLanguage(declared, fromLabel)) {
     return fromLabel;
   }
@@ -149,13 +187,33 @@ int languageMatch(String? track, String wanted) {
   return _variantOf(track!) == variant ? 2 : 1;
 }
 
-/// For dubbing, the Spanish of any country in the Americas is the Latin
-/// American one (`es-MX` counts as `es-419`); other regions stay as they are.
+/// The variant that tells two tracks of one language apart:
+///
+/// - Spanish: any country in the Americas is the Latin American dub
+///   (`es-MX` counts as `es-419`); Spain is Castilian.
+/// - Chinese: the script, which is what a reader cares about — `zh-Hant`,
+///   and `zh-TW`/`zh-HK`/`zh-MO` that write it, against `zh-Hans`,
+///   `zh-CN`/`zh-SG`.
+/// - Anything else: its region as it is.
 String? _variantOf(String tag) {
+  final code = iso6392(tag);
+  if (code == 'zho') return _chineseScript(tag);
+
   final region = regionOf(tag);
   if (region == null) return null;
-  if (iso6392(tag) == 'spa' && !_spainRegions.contains(region)) return '419';
+  if (code == 'spa' && !_spainRegions.contains(region)) return '419';
   return region;
+}
+
+String? _chineseScript(String tag) {
+  final subtags = tag.split(RegExp('[-_]')).skip(1).map((s) => s.toLowerCase());
+  if (subtags.contains('hant')) return 'Hant';
+  if (subtags.contains('hans')) return 'Hans';
+  return switch (regionOf(tag)) {
+    'TW' || 'HK' || 'MO' => 'Hant',
+    'CN' || 'SG' => 'Hans',
+    _ => null,
+  };
 }
 
 /// Spain, Ceuta and Melilla, and the Canaries.

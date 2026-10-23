@@ -53,6 +53,40 @@ abstract class ResolvedSource {
     );
   }
 
+  /// The selection [plan] was made with, read back from its tracks'
+  /// `sourceId`s — for planning a fresh link of the same source with the
+  /// same choice, whatever the preferences say by now. Null when the plan
+  /// predates `sourceId` or names a track this source no longer offers: the
+  /// pieces on disk would not line up, and the caller starts over.
+  SourceSelection? selectionOf(DownloadPlan plan) {
+    final ids = <TrackKind, List<String>>{};
+    for (final track in plan.tracks) {
+      final id = track.sourceId;
+      if (id == null) return null;
+      (ids[track.kind] ??= []).add(id);
+    }
+
+    final video = ids[TrackKind.video]?.singleOrNull;
+    final offeredVideos = {for (final v in videos) v.id};
+    if (offeredVideos.isNotEmpty && !offeredVideos.contains(video)) {
+      return null;
+    }
+    final audios = {...?ids[TrackKind.audio]};
+    final subtitles = {...?ids[TrackKind.subtitle]};
+    final offeredAudios = {for (final a in audiosFor(video)) a.id};
+    final offeredSubtitles = {for (final s in subtitlesFor(video)) s.id};
+    if (!offeredAudios.containsAll(audios) ||
+        !offeredSubtitles.containsAll(subtitles)) {
+      return null;
+    }
+
+    return SourceSelection(
+      videoId: offeredVideos.isEmpty ? null : video,
+      audioIds: audios,
+      subtitleIds: subtitles,
+    );
+  }
+
   /// Whether [criteria] leaves the audio to a person: some language has
   /// several equally good tracks (`es` with a Latin American and a Castilian
   /// one) or none of the wanted ones exists. When only some are missing, what

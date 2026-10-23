@@ -56,6 +56,26 @@ abstract class DownloadPlan with _$DownloadPlan {
   /// With fragments, progress counts finished pieces: an HLS weight is only
   /// an estimate from its bitrate. With whole files, it counts bytes.
   bool get isSegmented => tracks.any((t) => t.pieces.length > 1);
+
+  /// Whether [other] fetches the same files under the same local names —
+  /// same tracks, from the same source ids, with the same pieces — so what
+  /// this plan already has on disk counts for [other]. Only the URLs may
+  /// differ: a fresh mint signs them again.
+  bool linesUpWith(DownloadPlan other) {
+    if (tracks.length != other.tracks.length) return false;
+    for (final (i, track) in tracks.indexed) {
+      final theirs = other.tracks[i];
+      if (track.kind != theirs.kind ||
+          track.sourceId != theirs.sourceId ||
+          track.pieces.length != theirs.pieces.length) {
+        return false;
+      }
+      for (final (j, piece) in track.pieces.indexed) {
+        if (piece.file != theirs.pieces[j].file) return false;
+      }
+    }
+    return true;
+  }
 }
 
 @freezed
