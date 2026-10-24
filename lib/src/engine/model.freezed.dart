@@ -1113,11 +1113,23 @@ mixin _$DownloadRecord {
  Map<String, Object?> get metadata; DownloadStatus get status; DownloadError? get error;@_SourceConverter() SourceRequest get source;/// When the source's link stops working, when the app knows it.
  DateTime? get expiresAt;/// The server refused the source's link: the next attempt asks the app
 /// for a fresh one, whatever [expiresAt] says.
- bool get linkDead;@_TrackChoiceConverter() TrackChoice get tracks; OutputMode get output;/// The finished download: the package's master playlist or the file, as
+ bool get linkDead;/// The source, tracks or output changed since the last plan (a failed
+/// download asked for again): the next start plans again from the
+/// stored source — without asking for a fresh link — keeping the pieces
+/// that still line up.
+ bool get replan;/// Which attempt the pieces in flight belong to; part of every task id.
+/// Each start that hands pieces over takes a new one, so an update of a
+/// task from an earlier attempt — still being cancelled after a pause,
+/// or left over from a kill — is never taken for one of this attempt.
+ int get run;@_TrackChoiceConverter() TrackChoice get tracks; OutputMode get output;/// The finished download: the package's master playlist or the file, as
 /// the output sink stored it (a path, or whatever the sink understands).
  String? get outputLocator; OutputKind? get outputKind;/// The one file, written and not yet handed to the output sink: what a
 /// kill between the two picks up from instead of merging again.
- String? get stagedPath; DownloadProgress get progress; DateTime get createdAt; DateTime get updatedAt;
+ String? get stagedPath;/// Where the output sink was told to put the one file, saved before it
+/// moves it (see `ReservingOutputSink`): a kill after the move and
+/// before the record says done finds the file there instead of
+/// fetching everything again.
+ String? get publishTarget; DownloadProgress get progress; DateTime get createdAt; DateTime get updatedAt;
 /// Create a copy of DownloadRecord
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1130,16 +1142,16 @@ $DownloadRecordCopyWith<DownloadRecord> get copyWith => _$DownloadRecordCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is DownloadRecord&&(identical(other.id, id) || other.id == id)&&(identical(other.key, key) || other.key == key)&&(identical(other.title, title) || other.title == title)&&(identical(other.name, name) || other.name == name)&&const DeepCollectionEquality().equals(other.metadata, metadata)&&(identical(other.status, status) || other.status == status)&&(identical(other.error, error) || other.error == error)&&(identical(other.source, source) || other.source == source)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.linkDead, linkDead) || other.linkDead == linkDead)&&(identical(other.tracks, tracks) || other.tracks == tracks)&&(identical(other.output, output) || other.output == output)&&(identical(other.outputLocator, outputLocator) || other.outputLocator == outputLocator)&&(identical(other.outputKind, outputKind) || other.outputKind == outputKind)&&(identical(other.stagedPath, stagedPath) || other.stagedPath == stagedPath)&&(identical(other.progress, progress) || other.progress == progress)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is DownloadRecord&&(identical(other.id, id) || other.id == id)&&(identical(other.key, key) || other.key == key)&&(identical(other.title, title) || other.title == title)&&(identical(other.name, name) || other.name == name)&&const DeepCollectionEquality().equals(other.metadata, metadata)&&(identical(other.status, status) || other.status == status)&&(identical(other.error, error) || other.error == error)&&(identical(other.source, source) || other.source == source)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.linkDead, linkDead) || other.linkDead == linkDead)&&(identical(other.replan, replan) || other.replan == replan)&&(identical(other.run, run) || other.run == run)&&(identical(other.tracks, tracks) || other.tracks == tracks)&&(identical(other.output, output) || other.output == output)&&(identical(other.outputLocator, outputLocator) || other.outputLocator == outputLocator)&&(identical(other.outputKind, outputKind) || other.outputKind == outputKind)&&(identical(other.stagedPath, stagedPath) || other.stagedPath == stagedPath)&&(identical(other.publishTarget, publishTarget) || other.publishTarget == publishTarget)&&(identical(other.progress, progress) || other.progress == progress)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,key,title,name,const DeepCollectionEquality().hash(metadata),status,error,source,expiresAt,linkDead,tracks,output,outputLocator,outputKind,stagedPath,progress,createdAt,updatedAt);
+int get hashCode => Object.hashAll([runtimeType,id,key,title,name,const DeepCollectionEquality().hash(metadata),status,error,source,expiresAt,linkDead,replan,run,tracks,output,outputLocator,outputKind,stagedPath,publishTarget,progress,createdAt,updatedAt]);
 
 @override
 String toString() {
-  return 'DownloadRecord(id: $id, key: $key, title: $title, name: $name, metadata: $metadata, status: $status, error: $error, source: $source, expiresAt: $expiresAt, linkDead: $linkDead, tracks: $tracks, output: $output, outputLocator: $outputLocator, outputKind: $outputKind, stagedPath: $stagedPath, progress: $progress, createdAt: $createdAt, updatedAt: $updatedAt)';
+  return 'DownloadRecord(id: $id, key: $key, title: $title, name: $name, metadata: $metadata, status: $status, error: $error, source: $source, expiresAt: $expiresAt, linkDead: $linkDead, replan: $replan, run: $run, tracks: $tracks, output: $output, outputLocator: $outputLocator, outputKind: $outputKind, stagedPath: $stagedPath, publishTarget: $publishTarget, progress: $progress, createdAt: $createdAt, updatedAt: $updatedAt)';
 }
 
 
@@ -1150,7 +1162,7 @@ abstract mixin class $DownloadRecordCopyWith<$Res>  {
   factory $DownloadRecordCopyWith(DownloadRecord value, $Res Function(DownloadRecord) _then) = _$DownloadRecordCopyWithImpl;
 @useResult
 $Res call({
- String id, String key, String title, OutputName name, Map<String, Object?> metadata, DownloadStatus status, DownloadError? error,@_SourceConverter() SourceRequest source, DateTime? expiresAt, bool linkDead,@_TrackChoiceConverter() TrackChoice tracks, OutputMode output, String? outputLocator, OutputKind? outputKind, String? stagedPath, DownloadProgress progress, DateTime createdAt, DateTime updatedAt
+ String id, String key, String title, OutputName name, Map<String, Object?> metadata, DownloadStatus status, DownloadError? error,@_SourceConverter() SourceRequest source, DateTime? expiresAt, bool linkDead, bool replan, int run,@_TrackChoiceConverter() TrackChoice tracks, OutputMode output, String? outputLocator, OutputKind? outputKind, String? stagedPath, String? publishTarget, DownloadProgress progress, DateTime createdAt, DateTime updatedAt
 });
 
 
@@ -1167,7 +1179,7 @@ class _$DownloadRecordCopyWithImpl<$Res>
 
 /// Create a copy of DownloadRecord
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? key = null,Object? title = null,Object? name = null,Object? metadata = null,Object? status = null,Object? error = freezed,Object? source = null,Object? expiresAt = freezed,Object? linkDead = null,Object? tracks = null,Object? output = null,Object? outputLocator = freezed,Object? outputKind = freezed,Object? stagedPath = freezed,Object? progress = null,Object? createdAt = null,Object? updatedAt = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? key = null,Object? title = null,Object? name = null,Object? metadata = null,Object? status = null,Object? error = freezed,Object? source = null,Object? expiresAt = freezed,Object? linkDead = null,Object? replan = null,Object? run = null,Object? tracks = null,Object? output = null,Object? outputLocator = freezed,Object? outputKind = freezed,Object? stagedPath = freezed,Object? publishTarget = freezed,Object? progress = null,Object? createdAt = null,Object? updatedAt = null,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,key: null == key ? _self.key : key // ignore: cast_nullable_to_non_nullable
@@ -1179,11 +1191,14 @@ as DownloadStatus,error: freezed == error ? _self.error : error // ignore: cast_
 as DownloadError?,source: null == source ? _self.source : source // ignore: cast_nullable_to_non_nullable
 as SourceRequest,expiresAt: freezed == expiresAt ? _self.expiresAt : expiresAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,linkDead: null == linkDead ? _self.linkDead : linkDead // ignore: cast_nullable_to_non_nullable
-as bool,tracks: null == tracks ? _self.tracks : tracks // ignore: cast_nullable_to_non_nullable
+as bool,replan: null == replan ? _self.replan : replan // ignore: cast_nullable_to_non_nullable
+as bool,run: null == run ? _self.run : run // ignore: cast_nullable_to_non_nullable
+as int,tracks: null == tracks ? _self.tracks : tracks // ignore: cast_nullable_to_non_nullable
 as TrackChoice,output: null == output ? _self.output : output // ignore: cast_nullable_to_non_nullable
 as OutputMode,outputLocator: freezed == outputLocator ? _self.outputLocator : outputLocator // ignore: cast_nullable_to_non_nullable
 as String?,outputKind: freezed == outputKind ? _self.outputKind : outputKind // ignore: cast_nullable_to_non_nullable
 as OutputKind?,stagedPath: freezed == stagedPath ? _self.stagedPath : stagedPath // ignore: cast_nullable_to_non_nullable
+as String?,publishTarget: freezed == publishTarget ? _self.publishTarget : publishTarget // ignore: cast_nullable_to_non_nullable
 as String?,progress: null == progress ? _self.progress : progress // ignore: cast_nullable_to_non_nullable
 as DownloadProgress,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as DateTime,updatedAt: null == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable
@@ -1311,10 +1326,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String key,  String title,  OutputName name,  Map<String, Object?> metadata,  DownloadStatus status,  DownloadError? error, @_SourceConverter()  SourceRequest source,  DateTime? expiresAt,  bool linkDead, @_TrackChoiceConverter()  TrackChoice tracks,  OutputMode output,  String? outputLocator,  OutputKind? outputKind,  String? stagedPath,  DownloadProgress progress,  DateTime createdAt,  DateTime updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String key,  String title,  OutputName name,  Map<String, Object?> metadata,  DownloadStatus status,  DownloadError? error, @_SourceConverter()  SourceRequest source,  DateTime? expiresAt,  bool linkDead,  bool replan,  int run, @_TrackChoiceConverter()  TrackChoice tracks,  OutputMode output,  String? outputLocator,  OutputKind? outputKind,  String? stagedPath,  String? publishTarget,  DownloadProgress progress,  DateTime createdAt,  DateTime updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _DownloadRecord() when $default != null:
-return $default(_that.id,_that.key,_that.title,_that.name,_that.metadata,_that.status,_that.error,_that.source,_that.expiresAt,_that.linkDead,_that.tracks,_that.output,_that.outputLocator,_that.outputKind,_that.stagedPath,_that.progress,_that.createdAt,_that.updatedAt);case _:
+return $default(_that.id,_that.key,_that.title,_that.name,_that.metadata,_that.status,_that.error,_that.source,_that.expiresAt,_that.linkDead,_that.replan,_that.run,_that.tracks,_that.output,_that.outputLocator,_that.outputKind,_that.stagedPath,_that.publishTarget,_that.progress,_that.createdAt,_that.updatedAt);case _:
   return orElse();
 
 }
@@ -1332,10 +1347,10 @@ return $default(_that.id,_that.key,_that.title,_that.name,_that.metadata,_that.s
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String key,  String title,  OutputName name,  Map<String, Object?> metadata,  DownloadStatus status,  DownloadError? error, @_SourceConverter()  SourceRequest source,  DateTime? expiresAt,  bool linkDead, @_TrackChoiceConverter()  TrackChoice tracks,  OutputMode output,  String? outputLocator,  OutputKind? outputKind,  String? stagedPath,  DownloadProgress progress,  DateTime createdAt,  DateTime updatedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String key,  String title,  OutputName name,  Map<String, Object?> metadata,  DownloadStatus status,  DownloadError? error, @_SourceConverter()  SourceRequest source,  DateTime? expiresAt,  bool linkDead,  bool replan,  int run, @_TrackChoiceConverter()  TrackChoice tracks,  OutputMode output,  String? outputLocator,  OutputKind? outputKind,  String? stagedPath,  String? publishTarget,  DownloadProgress progress,  DateTime createdAt,  DateTime updatedAt)  $default,) {final _that = this;
 switch (_that) {
 case _DownloadRecord():
-return $default(_that.id,_that.key,_that.title,_that.name,_that.metadata,_that.status,_that.error,_that.source,_that.expiresAt,_that.linkDead,_that.tracks,_that.output,_that.outputLocator,_that.outputKind,_that.stagedPath,_that.progress,_that.createdAt,_that.updatedAt);case _:
+return $default(_that.id,_that.key,_that.title,_that.name,_that.metadata,_that.status,_that.error,_that.source,_that.expiresAt,_that.linkDead,_that.replan,_that.run,_that.tracks,_that.output,_that.outputLocator,_that.outputKind,_that.stagedPath,_that.publishTarget,_that.progress,_that.createdAt,_that.updatedAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -1352,10 +1367,10 @@ return $default(_that.id,_that.key,_that.title,_that.name,_that.metadata,_that.s
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String key,  String title,  OutputName name,  Map<String, Object?> metadata,  DownloadStatus status,  DownloadError? error, @_SourceConverter()  SourceRequest source,  DateTime? expiresAt,  bool linkDead, @_TrackChoiceConverter()  TrackChoice tracks,  OutputMode output,  String? outputLocator,  OutputKind? outputKind,  String? stagedPath,  DownloadProgress progress,  DateTime createdAt,  DateTime updatedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String key,  String title,  OutputName name,  Map<String, Object?> metadata,  DownloadStatus status,  DownloadError? error, @_SourceConverter()  SourceRequest source,  DateTime? expiresAt,  bool linkDead,  bool replan,  int run, @_TrackChoiceConverter()  TrackChoice tracks,  OutputMode output,  String? outputLocator,  OutputKind? outputKind,  String? stagedPath,  String? publishTarget,  DownloadProgress progress,  DateTime createdAt,  DateTime updatedAt)?  $default,) {final _that = this;
 switch (_that) {
 case _DownloadRecord() when $default != null:
-return $default(_that.id,_that.key,_that.title,_that.name,_that.metadata,_that.status,_that.error,_that.source,_that.expiresAt,_that.linkDead,_that.tracks,_that.output,_that.outputLocator,_that.outputKind,_that.stagedPath,_that.progress,_that.createdAt,_that.updatedAt);case _:
+return $default(_that.id,_that.key,_that.title,_that.name,_that.metadata,_that.status,_that.error,_that.source,_that.expiresAt,_that.linkDead,_that.replan,_that.run,_that.tracks,_that.output,_that.outputLocator,_that.outputKind,_that.stagedPath,_that.publishTarget,_that.progress,_that.createdAt,_that.updatedAt);case _:
   return null;
 
 }
@@ -1367,7 +1382,7 @@ return $default(_that.id,_that.key,_that.title,_that.name,_that.metadata,_that.s
 @JsonSerializable()
 
 class _DownloadRecord extends DownloadRecord {
-  const _DownloadRecord({required this.id, required this.key, required this.title, required this.name, final  Map<String, Object?> metadata = const {}, required this.status, this.error, @_SourceConverter() required this.source, this.expiresAt, this.linkDead = false, @_TrackChoiceConverter() this.tracks = const TrackChoice.policy(), this.output = const OutputMode(), this.outputLocator, this.outputKind, this.stagedPath, this.progress = const DownloadProgress(), required this.createdAt, required this.updatedAt}): _metadata = metadata,super._();
+  const _DownloadRecord({required this.id, required this.key, required this.title, required this.name, final  Map<String, Object?> metadata = const {}, required this.status, this.error, @_SourceConverter() required this.source, this.expiresAt, this.linkDead = false, this.replan = false, this.run = 0, @_TrackChoiceConverter() this.tracks = const TrackChoice.policy(), this.output = const OutputMode(), this.outputLocator, this.outputKind, this.stagedPath, this.publishTarget, this.progress = const DownloadProgress(), required this.createdAt, required this.updatedAt}): _metadata = metadata,super._();
   factory _DownloadRecord.fromJson(Map<String, dynamic> json) => _$DownloadRecordFromJson(json);
 
 /// The engine's own id, never reused; also the name of its folder.
@@ -1395,6 +1410,16 @@ class _DownloadRecord extends DownloadRecord {
 /// The server refused the source's link: the next attempt asks the app
 /// for a fresh one, whatever [expiresAt] says.
 @override@JsonKey() final  bool linkDead;
+/// The source, tracks or output changed since the last plan (a failed
+/// download asked for again): the next start plans again from the
+/// stored source — without asking for a fresh link — keeping the pieces
+/// that still line up.
+@override@JsonKey() final  bool replan;
+/// Which attempt the pieces in flight belong to; part of every task id.
+/// Each start that hands pieces over takes a new one, so an update of a
+/// task from an earlier attempt — still being cancelled after a pause,
+/// or left over from a kill — is never taken for one of this attempt.
+@override@JsonKey() final  int run;
 @override@JsonKey()@_TrackChoiceConverter() final  TrackChoice tracks;
 @override@JsonKey() final  OutputMode output;
 /// The finished download: the package's master playlist or the file, as
@@ -1404,6 +1429,11 @@ class _DownloadRecord extends DownloadRecord {
 /// The one file, written and not yet handed to the output sink: what a
 /// kill between the two picks up from instead of merging again.
 @override final  String? stagedPath;
+/// Where the output sink was told to put the one file, saved before it
+/// moves it (see `ReservingOutputSink`): a kill after the move and
+/// before the record says done finds the file there instead of
+/// fetching everything again.
+@override final  String? publishTarget;
 @override@JsonKey() final  DownloadProgress progress;
 @override final  DateTime createdAt;
 @override final  DateTime updatedAt;
@@ -1421,16 +1451,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _DownloadRecord&&(identical(other.id, id) || other.id == id)&&(identical(other.key, key) || other.key == key)&&(identical(other.title, title) || other.title == title)&&(identical(other.name, name) || other.name == name)&&const DeepCollectionEquality().equals(other._metadata, _metadata)&&(identical(other.status, status) || other.status == status)&&(identical(other.error, error) || other.error == error)&&(identical(other.source, source) || other.source == source)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.linkDead, linkDead) || other.linkDead == linkDead)&&(identical(other.tracks, tracks) || other.tracks == tracks)&&(identical(other.output, output) || other.output == output)&&(identical(other.outputLocator, outputLocator) || other.outputLocator == outputLocator)&&(identical(other.outputKind, outputKind) || other.outputKind == outputKind)&&(identical(other.stagedPath, stagedPath) || other.stagedPath == stagedPath)&&(identical(other.progress, progress) || other.progress == progress)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _DownloadRecord&&(identical(other.id, id) || other.id == id)&&(identical(other.key, key) || other.key == key)&&(identical(other.title, title) || other.title == title)&&(identical(other.name, name) || other.name == name)&&const DeepCollectionEquality().equals(other._metadata, _metadata)&&(identical(other.status, status) || other.status == status)&&(identical(other.error, error) || other.error == error)&&(identical(other.source, source) || other.source == source)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.linkDead, linkDead) || other.linkDead == linkDead)&&(identical(other.replan, replan) || other.replan == replan)&&(identical(other.run, run) || other.run == run)&&(identical(other.tracks, tracks) || other.tracks == tracks)&&(identical(other.output, output) || other.output == output)&&(identical(other.outputLocator, outputLocator) || other.outputLocator == outputLocator)&&(identical(other.outputKind, outputKind) || other.outputKind == outputKind)&&(identical(other.stagedPath, stagedPath) || other.stagedPath == stagedPath)&&(identical(other.publishTarget, publishTarget) || other.publishTarget == publishTarget)&&(identical(other.progress, progress) || other.progress == progress)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,key,title,name,const DeepCollectionEquality().hash(_metadata),status,error,source,expiresAt,linkDead,tracks,output,outputLocator,outputKind,stagedPath,progress,createdAt,updatedAt);
+int get hashCode => Object.hashAll([runtimeType,id,key,title,name,const DeepCollectionEquality().hash(_metadata),status,error,source,expiresAt,linkDead,replan,run,tracks,output,outputLocator,outputKind,stagedPath,publishTarget,progress,createdAt,updatedAt]);
 
 @override
 String toString() {
-  return 'DownloadRecord(id: $id, key: $key, title: $title, name: $name, metadata: $metadata, status: $status, error: $error, source: $source, expiresAt: $expiresAt, linkDead: $linkDead, tracks: $tracks, output: $output, outputLocator: $outputLocator, outputKind: $outputKind, stagedPath: $stagedPath, progress: $progress, createdAt: $createdAt, updatedAt: $updatedAt)';
+  return 'DownloadRecord(id: $id, key: $key, title: $title, name: $name, metadata: $metadata, status: $status, error: $error, source: $source, expiresAt: $expiresAt, linkDead: $linkDead, replan: $replan, run: $run, tracks: $tracks, output: $output, outputLocator: $outputLocator, outputKind: $outputKind, stagedPath: $stagedPath, publishTarget: $publishTarget, progress: $progress, createdAt: $createdAt, updatedAt: $updatedAt)';
 }
 
 
@@ -1441,7 +1471,7 @@ abstract mixin class _$DownloadRecordCopyWith<$Res> implements $DownloadRecordCo
   factory _$DownloadRecordCopyWith(_DownloadRecord value, $Res Function(_DownloadRecord) _then) = __$DownloadRecordCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String key, String title, OutputName name, Map<String, Object?> metadata, DownloadStatus status, DownloadError? error,@_SourceConverter() SourceRequest source, DateTime? expiresAt, bool linkDead,@_TrackChoiceConverter() TrackChoice tracks, OutputMode output, String? outputLocator, OutputKind? outputKind, String? stagedPath, DownloadProgress progress, DateTime createdAt, DateTime updatedAt
+ String id, String key, String title, OutputName name, Map<String, Object?> metadata, DownloadStatus status, DownloadError? error,@_SourceConverter() SourceRequest source, DateTime? expiresAt, bool linkDead, bool replan, int run,@_TrackChoiceConverter() TrackChoice tracks, OutputMode output, String? outputLocator, OutputKind? outputKind, String? stagedPath, String? publishTarget, DownloadProgress progress, DateTime createdAt, DateTime updatedAt
 });
 
 
@@ -1458,7 +1488,7 @@ class __$DownloadRecordCopyWithImpl<$Res>
 
 /// Create a copy of DownloadRecord
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? key = null,Object? title = null,Object? name = null,Object? metadata = null,Object? status = null,Object? error = freezed,Object? source = null,Object? expiresAt = freezed,Object? linkDead = null,Object? tracks = null,Object? output = null,Object? outputLocator = freezed,Object? outputKind = freezed,Object? stagedPath = freezed,Object? progress = null,Object? createdAt = null,Object? updatedAt = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? key = null,Object? title = null,Object? name = null,Object? metadata = null,Object? status = null,Object? error = freezed,Object? source = null,Object? expiresAt = freezed,Object? linkDead = null,Object? replan = null,Object? run = null,Object? tracks = null,Object? output = null,Object? outputLocator = freezed,Object? outputKind = freezed,Object? stagedPath = freezed,Object? publishTarget = freezed,Object? progress = null,Object? createdAt = null,Object? updatedAt = null,}) {
   return _then(_DownloadRecord(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,key: null == key ? _self.key : key // ignore: cast_nullable_to_non_nullable
@@ -1470,11 +1500,14 @@ as DownloadStatus,error: freezed == error ? _self.error : error // ignore: cast_
 as DownloadError?,source: null == source ? _self.source : source // ignore: cast_nullable_to_non_nullable
 as SourceRequest,expiresAt: freezed == expiresAt ? _self.expiresAt : expiresAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,linkDead: null == linkDead ? _self.linkDead : linkDead // ignore: cast_nullable_to_non_nullable
-as bool,tracks: null == tracks ? _self.tracks : tracks // ignore: cast_nullable_to_non_nullable
+as bool,replan: null == replan ? _self.replan : replan // ignore: cast_nullable_to_non_nullable
+as bool,run: null == run ? _self.run : run // ignore: cast_nullable_to_non_nullable
+as int,tracks: null == tracks ? _self.tracks : tracks // ignore: cast_nullable_to_non_nullable
 as TrackChoice,output: null == output ? _self.output : output // ignore: cast_nullable_to_non_nullable
 as OutputMode,outputLocator: freezed == outputLocator ? _self.outputLocator : outputLocator // ignore: cast_nullable_to_non_nullable
 as String?,outputKind: freezed == outputKind ? _self.outputKind : outputKind // ignore: cast_nullable_to_non_nullable
 as OutputKind?,stagedPath: freezed == stagedPath ? _self.stagedPath : stagedPath // ignore: cast_nullable_to_non_nullable
+as String?,publishTarget: freezed == publishTarget ? _self.publishTarget : publishTarget // ignore: cast_nullable_to_non_nullable
 as String?,progress: null == progress ? _self.progress : progress // ignore: cast_nullable_to_non_nullable
 as DownloadProgress,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as DateTime,updatedAt: null == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable

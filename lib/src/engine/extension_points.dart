@@ -61,6 +61,27 @@ abstract interface class OutputSink {
   Future<void> remove(String locator);
 }
 
+/// An [OutputSink] that says where a file will go before moving it. The
+/// engine saves that place first, so a kill in the middle of a publish —
+/// after the move, before the record says done — is picked up from the
+/// file already there, instead of fetching and merging it all again.
+abstract interface class ReservingOutputSink implements OutputSink {
+  /// The locator a publish of [name] would answer now; nothing is written.
+  /// Null when the file would stay private (then [publish] is used).
+  Future<String?> reserve(
+    OutputName name,
+    String extension,
+    DownloadRecord record,
+  );
+
+  /// Moves [staged] to [locator], from [reserve], and answers where it
+  /// ended up: another free name when [locator] was taken meanwhile.
+  Future<String> publishTo(File staged, String locator, DownloadRecord record);
+
+  /// Whether [locator] holds a published file.
+  Future<bool> holds(String locator);
+}
+
 /// Runs ffmpeg with [args] (see `MkvArgs`). The engine does not depend on
 /// an ffmpeg build: each app brings its own.
 abstract interface class FfmpegRunner {

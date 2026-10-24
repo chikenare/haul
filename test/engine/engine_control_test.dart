@@ -52,8 +52,7 @@ void main() {
     await waitUntil(() => transfer.enqueued.length == 5);
     expect(transfer.inFlight, hasLength(4));
 
-    await transfer.completeAll();
-    await waitForStatus(engine, id, DownloadStatus.done);
+    await finish(transfer, engine, id);
     expect(transfer.enqueued, hasLength(6));
     expect(transfer.peak, 4);
     expect(
@@ -290,7 +289,7 @@ void main() {
       await waitUntil(() => env.transfer.enqueued.length == 2);
       // A late report from an earlier run, for a piece not handed over yet.
       final waiting = env.transfer.enqueued.first.copyWith(
-        taskId: 'ode-$id-1-2',
+        taskId: 'ode-$id-1-1-2',
       );
       env.transfer.emit(TaskStatusUpdate(waiting, TaskStatus.canceled));
       await settle();
@@ -302,22 +301,42 @@ void main() {
       expect(env.transfer.enqueued, hasLength(6));
     });
 
-    test('a cancel of a failed piece is not left behind to swallow a real '
-        'one after the retry', () async {
+    test('after a retry, updates of the failed run count for nothing, and '
+        'a real cancel of the new run is still asked for again', () async {
       final engine = await env.engine();
       final (:id, outcome: _) = await engine.enqueue(request());
       await waitUntil(() => env.transfer.enqueued.length == 6);
-      final failed = env.transfer.enqueued.first;
-      env.transfer.fail(failed);
+      final old = env.transfer.enqueued.toList();
+      env.transfer.fail(old.first);
       await waitForStatus(engine, id, DownloadStatus.failed);
-      expect(env.transfer.canceledIds, isNot(contains(failed.taskId)));
+      await waitUntil(() => env.transfer.inFlight.isEmpty);
 
       env.transfer.enqueued.clear();
       await engine.retry(id);
       await waitUntil(() => env.transfer.enqueued.length == 6);
-      env.transfer.inFlight.remove(failed.taskId);
-      env.transfer.emit(TaskStatusUpdate(failed, TaskStatus.canceled));
+      final fresh = env.transfer.enqueued.toList();
+      expect(
+        fresh.map((t) => t.taskId).toSet().intersection({
+          for (final t in old) t.taskId,
+        }),
+        isEmpty,
+        reason: 'a new run, new task ids',
+      );
+
+      // Late reports of the first run: none is a piece of this one.
+      env.transfer.emit(TaskStatusUpdate(old[1], TaskStatus.canceled));
+      env.transfer.emit(TaskStatusUpdate(old[2], TaskStatus.complete));
+      env.transfer.emit(TaskStatusUpdate(old[3], TaskStatus.failed));
+      await settle();
+      expect(engine.byId(id)!.status, DownloadStatus.downloading);
+      expect(env.transfer.enqueued, hasLength(6));
+
+      final victim = fresh.first;
+      env.transfer.inFlight.remove(victim.taskId);
+      env.transfer.emit(TaskStatusUpdate(victim, TaskStatus.canceled));
       await waitUntil(() => env.transfer.enqueued.length == 7);
+      await env.transfer.completeAll();
+      await waitForStatus(engine, id, DownloadStatus.done);
     });
   });
 

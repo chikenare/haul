@@ -65,10 +65,30 @@ or ffmpeg.
   choice the pieces were made with (`ResolvedSource.selectionOf`), and what is
   on disk is kept only when the new plan lines up with the old one
   (`DownloadPlan.linesUpWith`: same tracks, pieces, ranges and ETag).
+- **Every attempt is a run.** Task ids carry the record's run
+  (`ode-<id>-<run>-<track>-<piece>`): an update of a task from an earlier
+  attempt — still being cancelled after a pause, or left by a kill — never
+  counts for the current one. After a kill, only the tasks of the record's
+  last run are followed (paused ones resumed); the rest are cancelled.
+- **Kills while publishing.** The one file is written as `output.<ext>` in
+  the download's folder before it goes to the sink, so a kill or a failed
+  publish after that only publishes again. A `ReservingOutputSink` (such as
+  `DirectorySink`) says where the file will go before moving it, and the
+  engine saves that first: a kill after the move finds the file there.
 - **Errors are codes.** `DownloadError.code` is a `DownloadErrorCode`
   (`network`, `http` with `httpStatus`, `no_space`, `mux_failed`,
   `unavailable`, `corrupt`, `publish_failed`, `unknown`) or the app's own from
   a `RefreshException`. The app localizes it.
+
+### Known limits
+
+- `DirectorySink` answers absolute paths as locators. On iOS the app's
+  container path changes between installs (and some updates), so a locator
+  saved before can stop resolving; keep files private (`PrivateSink`, whose
+  `work:` locators are relative) there, or map the path again in the app.
+- On desktop the downloader may copy a finished file into place rather than
+  move it. A whole file of known size, and a range, are checked by size; a
+  fragment (no size known up front) found on disk after a kill is trusted.
 
 ## Usage
 

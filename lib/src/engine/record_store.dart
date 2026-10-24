@@ -109,15 +109,26 @@ class JsonRecordStore implements RecordStore {
     final root = await _root();
     final dir = Directory(p.join(root.path, id));
     if (!await dir.exists()) return;
+    // The record first: if a file elsewhere in the folder is locked (on
+    // Windows a rename of the folder fails then, and so may its delete),
+    // what is left is no longer read back as a download.
+    try {
+      final record = File(p.join(dir.path, recordFile));
+      if (await record.exists()) await record.delete();
+    } on FileSystemException {
+      // The rename below may still take it.
+    }
     // Renamed first, so a half-finished delete is never read back as a
     // download: whatever is left in the trash goes at the next load.
     final trash = Directory(p.join(root.path, _trash));
-    await trash.create(recursive: true);
     final target = p.join(
       trash.path,
       '$id-${DateTime.now().microsecondsSinceEpoch}',
     );
     try {
+      // Inside the try: a root that cannot be written fails here too, and
+      // the delete in place below is all that is left to try.
+      await trash.create(recursive: true);
       await _deleteQuietly(await dir.rename(target));
     } on FileSystemException {
       await _deleteQuietly(dir);

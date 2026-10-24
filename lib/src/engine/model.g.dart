@@ -87,6 +87,8 @@ _DownloadRecord _$DownloadRecordFromJson(Map<String, dynamic> json) =>
           ? null
           : DateTime.parse(json['expiresAt'] as String),
       linkDead: json['linkDead'] as bool? ?? false,
+      replan: json['replan'] as bool? ?? false,
+      run: (json['run'] as num?)?.toInt() ?? 0,
       tracks: json['tracks'] == null
           ? const TrackChoice.policy()
           : const _TrackChoiceConverter().fromJson(
@@ -98,6 +100,7 @@ _DownloadRecord _$DownloadRecordFromJson(Map<String, dynamic> json) =>
       outputLocator: json['outputLocator'] as String?,
       outputKind: $enumDecodeNullable(_$OutputKindEnumMap, json['outputKind']),
       stagedPath: json['stagedPath'] as String?,
+      publishTarget: json['publishTarget'] as String?,
       progress: json['progress'] == null
           ? const DownloadProgress()
           : DownloadProgress.fromJson(json['progress'] as Map<String, dynamic>),
@@ -117,11 +120,14 @@ Map<String, dynamic> _$DownloadRecordToJson(_DownloadRecord instance) =>
       'source': const _SourceConverter().toJson(instance.source),
       'expiresAt': instance.expiresAt?.toIso8601String(),
       'linkDead': instance.linkDead,
+      'replan': instance.replan,
+      'run': instance.run,
       'tracks': const _TrackChoiceConverter().toJson(instance.tracks),
       'output': instance.output.toJson(),
       'outputLocator': instance.outputLocator,
       'outputKind': _$OutputKindEnumMap[instance.outputKind],
       'stagedPath': instance.stagedPath,
+      'publishTarget': instance.publishTarget,
       'progress': instance.progress.toJson(),
       'createdAt': instance.createdAt.toIso8601String(),
       'updatedAt': instance.updatedAt.toIso8601String(),

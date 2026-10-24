@@ -620,7 +620,10 @@ mixin _$PlannedPiece {
  String get url; String get file;/// Seconds of media, only on DASH fragments: the local package's
 /// playlist is written from them. Null on the init.
  double? get duration;/// Inclusive byte range of the file, only on [TrackAssembly.ranges].
- int? get rangeStart; int? get rangeEnd;
+ int? get rangeStart; int? get rangeEnd;/// The whole file's size, when the server said it (`Content-Length`):
+/// a copy cut short — the downloader's move is not atomic on every
+/// platform — is then caught instead of counted as done.
+ int? get size;
 /// Create a copy of PlannedPiece
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -633,16 +636,16 @@ $PlannedPieceCopyWith<PlannedPiece> get copyWith => _$PlannedPieceCopyWithImpl<P
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlannedPiece&&(identical(other.url, url) || other.url == url)&&(identical(other.file, file) || other.file == file)&&(identical(other.duration, duration) || other.duration == duration)&&(identical(other.rangeStart, rangeStart) || other.rangeStart == rangeStart)&&(identical(other.rangeEnd, rangeEnd) || other.rangeEnd == rangeEnd));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlannedPiece&&(identical(other.url, url) || other.url == url)&&(identical(other.file, file) || other.file == file)&&(identical(other.duration, duration) || other.duration == duration)&&(identical(other.rangeStart, rangeStart) || other.rangeStart == rangeStart)&&(identical(other.rangeEnd, rangeEnd) || other.rangeEnd == rangeEnd)&&(identical(other.size, size) || other.size == size));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,url,file,duration,rangeStart,rangeEnd);
+int get hashCode => Object.hash(runtimeType,url,file,duration,rangeStart,rangeEnd,size);
 
 @override
 String toString() {
-  return 'PlannedPiece(url: $url, file: $file, duration: $duration, rangeStart: $rangeStart, rangeEnd: $rangeEnd)';
+  return 'PlannedPiece(url: $url, file: $file, duration: $duration, rangeStart: $rangeStart, rangeEnd: $rangeEnd, size: $size)';
 }
 
 
@@ -653,7 +656,7 @@ abstract mixin class $PlannedPieceCopyWith<$Res>  {
   factory $PlannedPieceCopyWith(PlannedPiece value, $Res Function(PlannedPiece) _then) = _$PlannedPieceCopyWithImpl;
 @useResult
 $Res call({
- String url, String file, double? duration, int? rangeStart, int? rangeEnd
+ String url, String file, double? duration, int? rangeStart, int? rangeEnd, int? size
 });
 
 
@@ -670,13 +673,14 @@ class _$PlannedPieceCopyWithImpl<$Res>
 
 /// Create a copy of PlannedPiece
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? url = null,Object? file = null,Object? duration = freezed,Object? rangeStart = freezed,Object? rangeEnd = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? url = null,Object? file = null,Object? duration = freezed,Object? rangeStart = freezed,Object? rangeEnd = freezed,Object? size = freezed,}) {
   return _then(_self.copyWith(
 url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
 as String,file: null == file ? _self.file : file // ignore: cast_nullable_to_non_nullable
 as String,duration: freezed == duration ? _self.duration : duration // ignore: cast_nullable_to_non_nullable
 as double?,rangeStart: freezed == rangeStart ? _self.rangeStart : rangeStart // ignore: cast_nullable_to_non_nullable
 as int?,rangeEnd: freezed == rangeEnd ? _self.rangeEnd : rangeEnd // ignore: cast_nullable_to_non_nullable
+as int?,size: freezed == size ? _self.size : size // ignore: cast_nullable_to_non_nullable
 as int?,
   ));
 }
@@ -762,10 +766,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String url,  String file,  double? duration,  int? rangeStart,  int? rangeEnd)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String url,  String file,  double? duration,  int? rangeStart,  int? rangeEnd,  int? size)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _PlannedPiece() when $default != null:
-return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.rangeEnd);case _:
+return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.rangeEnd,_that.size);case _:
   return orElse();
 
 }
@@ -783,10 +787,10 @@ return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.range
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String url,  String file,  double? duration,  int? rangeStart,  int? rangeEnd)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String url,  String file,  double? duration,  int? rangeStart,  int? rangeEnd,  int? size)  $default,) {final _that = this;
 switch (_that) {
 case _PlannedPiece():
-return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.rangeEnd);case _:
+return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.rangeEnd,_that.size);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -803,10 +807,10 @@ return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.range
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String url,  String file,  double? duration,  int? rangeStart,  int? rangeEnd)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String url,  String file,  double? duration,  int? rangeStart,  int? rangeEnd,  int? size)?  $default,) {final _that = this;
 switch (_that) {
 case _PlannedPiece() when $default != null:
-return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.rangeEnd);case _:
+return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.rangeEnd,_that.size);case _:
   return null;
 
 }
@@ -818,7 +822,7 @@ return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.range
 @JsonSerializable()
 
 class _PlannedPiece implements PlannedPiece {
-  const _PlannedPiece({required this.url, required this.file, this.duration, this.rangeStart, this.rangeEnd});
+  const _PlannedPiece({required this.url, required this.file, this.duration, this.rangeStart, this.rangeEnd, this.size});
   factory _PlannedPiece.fromJson(Map<String, dynamic> json) => _$PlannedPieceFromJson(json);
 
 @override final  String url;
@@ -829,6 +833,10 @@ class _PlannedPiece implements PlannedPiece {
 /// Inclusive byte range of the file, only on [TrackAssembly.ranges].
 @override final  int? rangeStart;
 @override final  int? rangeEnd;
+/// The whole file's size, when the server said it (`Content-Length`):
+/// a copy cut short — the downloader's move is not atomic on every
+/// platform — is then caught instead of counted as done.
+@override final  int? size;
 
 /// Create a copy of PlannedPiece
 /// with the given fields replaced by the non-null parameter values.
@@ -843,16 +851,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlannedPiece&&(identical(other.url, url) || other.url == url)&&(identical(other.file, file) || other.file == file)&&(identical(other.duration, duration) || other.duration == duration)&&(identical(other.rangeStart, rangeStart) || other.rangeStart == rangeStart)&&(identical(other.rangeEnd, rangeEnd) || other.rangeEnd == rangeEnd));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlannedPiece&&(identical(other.url, url) || other.url == url)&&(identical(other.file, file) || other.file == file)&&(identical(other.duration, duration) || other.duration == duration)&&(identical(other.rangeStart, rangeStart) || other.rangeStart == rangeStart)&&(identical(other.rangeEnd, rangeEnd) || other.rangeEnd == rangeEnd)&&(identical(other.size, size) || other.size == size));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,url,file,duration,rangeStart,rangeEnd);
+int get hashCode => Object.hash(runtimeType,url,file,duration,rangeStart,rangeEnd,size);
 
 @override
 String toString() {
-  return 'PlannedPiece(url: $url, file: $file, duration: $duration, rangeStart: $rangeStart, rangeEnd: $rangeEnd)';
+  return 'PlannedPiece(url: $url, file: $file, duration: $duration, rangeStart: $rangeStart, rangeEnd: $rangeEnd, size: $size)';
 }
 
 
@@ -863,7 +871,7 @@ abstract mixin class _$PlannedPieceCopyWith<$Res> implements $PlannedPieceCopyWi
   factory _$PlannedPieceCopyWith(_PlannedPiece value, $Res Function(_PlannedPiece) _then) = __$PlannedPieceCopyWithImpl;
 @override @useResult
 $Res call({
- String url, String file, double? duration, int? rangeStart, int? rangeEnd
+ String url, String file, double? duration, int? rangeStart, int? rangeEnd, int? size
 });
 
 
@@ -880,13 +888,14 @@ class __$PlannedPieceCopyWithImpl<$Res>
 
 /// Create a copy of PlannedPiece
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? url = null,Object? file = null,Object? duration = freezed,Object? rangeStart = freezed,Object? rangeEnd = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? url = null,Object? file = null,Object? duration = freezed,Object? rangeStart = freezed,Object? rangeEnd = freezed,Object? size = freezed,}) {
   return _then(_PlannedPiece(
 url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
 as String,file: null == file ? _self.file : file // ignore: cast_nullable_to_non_nullable
 as String,duration: freezed == duration ? _self.duration : duration // ignore: cast_nullable_to_non_nullable
 as double?,rangeStart: freezed == rangeStart ? _self.rangeStart : rangeStart // ignore: cast_nullable_to_non_nullable
 as int?,rangeEnd: freezed == rangeEnd ? _self.rangeEnd : rangeEnd // ignore: cast_nullable_to_non_nullable
+as int?,size: freezed == size ? _self.size : size // ignore: cast_nullable_to_non_nullable
 as int?,
   ));
 }

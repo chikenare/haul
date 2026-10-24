@@ -13,8 +13,11 @@ import 'package:offline_engine/src/planner/errors.dart';
 import 'package:offline_engine/src/planner/sources/source_fetcher.dart';
 import 'package:path/path.dart' as p;
 
-/// In-memory stand-in for background_downloader. Remembers what was
-/// enqueued and cancelled; [alive] plays tasks the platform still holds;
+/// In-memory stand-in for background_downloader, as it behaves: a
+/// cancelled task is still listed by [allTasks] until its `canceled` update
+/// is delivered; a paused one is listed too, and only [resume] brings it
+/// back; a refused enqueue leaves nothing behind. Remembers what was
+/// enqueued and cancelled; [alive] plays tasks that outlived a kill;
 /// [complete] writes a piece's file where the plugin would and reports it.
 class FakeTransferClient extends TransferClient {
   FakeTransferClient({required this.appSupport});
@@ -28,19 +31,29 @@ class FakeTransferClient extends TransferClient {
   /// Every task handed over, in order.
   final enqueued = <DownloadTask>[];
   final canceledIds = <String>[];
+  final resumed = <String>[];
 
-  /// What [allTasks] answers besides what is in flight: tasks that outlived
-  /// a kill.
+  /// What [allTasks] answers besides the rest: tasks that outlived a kill.
   final alive = <Task>[];
 
-  /// Enqueued, not finished and not cancelled.
+  /// Enqueued, not finished, not cancelled and not paused.
   final inFlight = <String, DownloadTask>{};
+
+  /// Paused by the plugin (a notification button, the system): listed, and
+  /// waiting for [resume].
+  final paused = <String, DownloadTask>{};
+
+  /// Cancelled, with the `canceled` update not delivered yet: still listed.
+  final cancelling = <String, Task>{};
 
   int? maxConcurrent;
   bool? holdingQueue;
 
   /// When set, the next [enqueueAll] answers `false` for every task.
   bool refuseNext = false;
+
+  /// When set, [resume] answers `false`: no resume data was kept.
+  bool refuseResume = false;
 
   /// When set, the `canceled` updates of [cancelTasksWithIds] wait in
   /// [heldCancels] until [releaseCancels]: the plugin reports them later,
@@ -57,7 +70,19 @@ class FakeTransferClient extends TransferClient {
   File fileOf(DownloadTask task) =>
       File(p.join(appSupport.path, task.directory, task.filename));
 
-  void emit(TaskStatusUpdate update) => _onStatus?.call(update);
+  /// Delivers [update]. A final one takes the task off every list, as the
+  /// plugin forgets a task once it has reported how it ended.
+  void emit(TaskStatusUpdate update) {
+    if (update.status.isFinalState) _forget(update.task.taskId);
+    _onStatus?.call(update);
+  }
+
+  void _forget(String taskId) {
+    inFlight.remove(taskId);
+    paused.remove(taskId);
+    cancelling.remove(taskId);
+    alive.removeWhere((t) => t.taskId == taskId);
+  }
 
   void emitProgress(TaskProgressUpdate update) => _onProgress?.call(update);
 
@@ -68,7 +93,6 @@ class FakeTransferClient extends TransferClient {
     await file.parent.create(recursive: true);
     // Bytes, not a `List<int>`: a 16 MB range as a list of ints is 128 MB.
     await file.writeAsBytes(Uint8List(bytes ?? _rangeSize(task) ?? 10));
-    inFlight.remove(task.taskId);
     emit(TaskStatusUpdate(task, TaskStatus.complete));
   }
 
@@ -92,7 +116,6 @@ class FakeTransferClient extends TransferClient {
   }
 
   void fail(DownloadTask task, {int? httpStatus, String? description}) {
-    inFlight.remove(task.taskId);
     emit(
       TaskStatusUpdate(
         task,
@@ -104,6 +127,14 @@ class FakeTransferClient extends TransferClient {
             : TaskException(description),
       ),
     );
+  }
+
+  /// What the plugin does when a notification button or the system pauses
+  /// a task: it waits, listed, for [resume].
+  void pauseByPlatform(DownloadTask task) {
+    inFlight.remove(task.taskId);
+    paused[task.taskId] = task;
+    emit(TaskStatusUpdate(task, TaskStatus.paused));
   }
 
   static int? _rangeSize(DownloadTask task) {
@@ -152,16 +183,36 @@ class FakeTransferClient extends TransferClient {
   Future<void> cancelTasksWithIds(List<String> taskIds) async {
     canceledIds.addAll(taskIds);
     for (final id in taskIds) {
-      final task = inFlight.remove(id);
+      final task =
+          inFlight.remove(id) ??
+          paused.remove(id) ??
+          alive.where((t) => t.taskId == id).firstOrNull;
       alive.removeWhere((t) => t.taskId == id);
       if (task == null) continue;
+      cancelling[id] = task;
       final update = TaskStatusUpdate(task, TaskStatus.canceled);
       holdCancels ? heldCancels.add(update) : emit(update);
     }
   }
 
   @override
-  Future<List<Task>> allTasks() async => [...alive, ...inFlight.values];
+  Future<bool> resume(DownloadTask task) async {
+    final held = paused[task.taskId];
+    if (held == null || refuseResume) return false;
+    paused.remove(task.taskId);
+    inFlight[task.taskId] = held;
+    resumed.add(task.taskId);
+    emit(TaskStatusUpdate(held, TaskStatus.running));
+    return true;
+  }
+
+  @override
+  Future<List<Task>> allTasks() async => [
+    ...alive,
+    ...inFlight.values,
+    ...paused.values,
+    ...cancelling.values,
+  ];
 }
 
 /// Serves fixed responses by URL; anything else is a 404.

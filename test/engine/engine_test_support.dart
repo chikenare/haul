@@ -128,7 +128,7 @@ Map<String, FetchedResponse Function(Uri)> defaultRoutes() => {
     'application/vnd.apple.mpegurl',
     (_) => hlsMedia('a'),
   ),
-  fileUrl: fileResponse(length: 1000),
+  fileUrl: fileResponse(length: 10),
   rangedUrl: fileResponse(length: rangedLength, ranges: true, etag: etag),
 };
 
@@ -335,6 +335,23 @@ Future<DownloadRecord> waitForStatus(
         'status $status, is ${engine.byId(id)?.status} '
         '(${engine.byId(id)?.error})',
   );
+  return engine.byId(id)!;
+}
+
+/// Completes [transfer]'s tasks as they come until [id] is done: unlike
+/// `completeAll`, never gives up while the engine is slow to refill (a
+/// loaded machine can take longer than its idle window).
+Future<DownloadRecord> finish(
+  FakeTransferClient transfer,
+  DownloadEngine engine,
+  String id,
+) async {
+  await waitUntil(() async {
+    if (transfer.inFlight.isNotEmpty) {
+      await transfer.complete(transfer.inFlight.values.first);
+    }
+    return engine.byId(id)?.status == DownloadStatus.done;
+  }, reason: () => 'done, is ${engine.byId(id)?.status}');
   return engine.byId(id)!;
 }
 

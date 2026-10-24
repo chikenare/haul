@@ -29,6 +29,11 @@ abstract class TransferClient {
 
   Future<void> cancelTasksWithIds(List<String> taskIds);
 
+  /// Resumes a task the platform paused (a notification button, the
+  /// system, or before a kill). `false` when it holds nothing to resume
+  /// from — the task is running or queued, or its partial data is gone.
+  Future<bool> resume(DownloadTask task) async => false;
+
   /// The engine's tasks the platform still holds: queued, running, paused
   /// or waiting to retry.
   Future<List<Task>> allTasks();
@@ -97,6 +102,9 @@ class PluginTransferClient extends TransferClient {
   @override
   Future<void> cancelTasksWithIds(List<String> taskIds) =>
       _downloader.cancelTasksWithIds(taskIds);
+
+  @override
+  Future<bool> resume(DownloadTask task) => _downloader.resume(task);
 
   @override
   Future<List<Task>> allTasks() => _downloader.allTasks(allGroups: true);

@@ -75,6 +75,7 @@ _PlannedPiece _$PlannedPieceFromJson(Map<String, dynamic> json) =>
       duration: (json['duration'] as num?)?.toDouble(),
       rangeStart: (json['rangeStart'] as num?)?.toInt(),
       rangeEnd: (json['rangeEnd'] as num?)?.toInt(),
+      size: (json['size'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$PlannedPieceToJson(_PlannedPiece instance) =>
@@ -84,4 +85,5 @@ Map<String, dynamic> _$PlannedPieceToJson(_PlannedPiece instance) =>
       'duration': instance.duration,
       'rangeStart': instance.rangeStart,
       'rangeEnd': instance.rangeEnd,
+      'size': instance.size,
     };

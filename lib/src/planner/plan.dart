@@ -154,6 +154,11 @@ abstract class PlannedPiece with _$PlannedPiece {
     /// Inclusive byte range of the file, only on [TrackAssembly.ranges].
     int? rangeStart,
     int? rangeEnd,
+
+    /// The whole file's size, when the server said it (`Content-Length`):
+    /// a copy cut short — the downloader's move is not atomic on every
+    /// platform — is then caught instead of counted as done.
+    int? size,
   }) = _PlannedPiece;
 
   factory PlannedPiece.fromJson(Map<String, Object?> json) =>
@@ -165,8 +170,9 @@ extension PlannedPieceRange on PlannedPiece {
   String? get rangeHeader =>
       rangeStart == null ? null : 'bytes=$rangeStart-${rangeEnd ?? ''}';
 
-  /// The size a fetched range must have; null when anything goes.
+  /// The size a fetched piece must have — its range's, or the whole
+  /// file's when known; null when anything goes.
   int? get expectedBytes => rangeStart != null && rangeEnd != null
       ? rangeEnd! - rangeStart! + 1
-      : null;
+      : size;
 }

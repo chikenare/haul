@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:background_downloader/background_downloader.dart';
+import 'package:flutter/foundation.dart';
 import 'package:offline_engine/src/engine/errors.dart';
 import 'package:offline_engine/src/engine/extension_points.dart';
 import 'package:offline_engine/src/engine/model.dart';
@@ -114,12 +115,16 @@ class DownloadEngine {
   final SourceResolver _resolver;
   final Future<Directory> Function() _appSupport;
   final RecordStore? _storeOverride;
-  late final RecordStore _store;
+
+  /// Not final: a failed init is tried again (see [init]).
+  late RecordStore _store;
 
   static const _packager = LocalPackager();
   static const _assembler = TrackAssembler();
   static const _planFile = 'plan.json';
   static const _master = 'master.m3u8';
+  static const _subtitlesFile = 'subtitles.json';
+  static const _subsDir = 'subs';
 
   /// Prefix of a locator inside the download's own folder: stored relative,
   /// because the container path changes on iOS between installs.
@@ -129,9 +134,20 @@ class DownloadEngine {
   final Map<String, DownloadRecord> _records = {};
   final Map<String, _Job> _jobs = {};
 
-  /// Tasks the engine cancelled itself, whose `canceled` update is not a
-  /// reason to ask for them again.
-  final Set<String> _ownCancels = {};
+  /// Records that were active when the engine started: their tasks of the
+  /// record's last run may still be running in the platform, and their
+  /// first start here follows them instead of asking for them again.
+  final Set<String> _recovering = {};
+
+  /// Pieces of a record's current run reported complete while it had no
+  /// job yet (between a kill and its start): counted when the job is made,
+  /// without trusting the file's mere existence (see [_copiesInPlace]).
+  final Set<String> _completedEarly = {};
+
+  /// Clean-up after a failure (cancelling the rest, wiping pieces) still
+  /// running per download: the next start waits for it, so it never reads
+  /// a folder being emptied.
+  final Map<String, Future<void>> _cleanups = {};
 
   final _changes = StreamController<void>.broadcast(sync: true);
   Future<void>? _ready;
@@ -145,17 +161,33 @@ class DownloadEngine {
           ? 1 << 30
           : config.maxConcurrent * 4);
 
+  /// Whether the downloader moves a finished file into place in one step,
+  /// so a file there is a finished one. On desktop it may copy it instead,
+  /// and a copy cut short looks like a file too.
+  static bool get _copiesInPlace => switch (defaultTargetPlatform) {
+    TargetPlatform.windows ||
+    TargetPlatform.linux ||
+    TargetPlatform.macOS => false,
+    _ => true,
+  };
+
   // ---------------------------------------------------------------------
   // Life
 
   /// Idempotent. Loads the records, picks up what a kill left behind and
   /// starts the queue — so call it at app start, not when a screen opens.
-  Future<void> init() => _ready ??= _init();
+  /// A failed init (an unreadable folder, a plugin that would not start) is
+  /// not kept: the next call tries again.
+  Future<void> init() => _ready ??= _init().catchError((Object e) {
+    _ready = null;
+    throw e;
+  });
 
   Future<void> _init() async {
     _root = Directory(p.join((await _appSupport()).path, config.rootFolder));
     _store = _storeOverride ?? JsonRecordStore(() async => _root);
 
+    _records.clear();
     for (final record in await _store.loadAll()) {
       _records[record.id] = record;
     }
@@ -176,12 +208,13 @@ class DownloadEngine {
     );
     await _transfer.start();
 
-    await _cancelStrayTasks();
     for (final record in _records.values.toList()) {
       if (record.isActive) {
+        _recovering.add(record.id);
         _put(record.copyWith(status: DownloadStatus.queued));
       }
     }
+    await _cancelStrayTasks();
     _emit();
     unawaited(_pump());
   }
@@ -219,12 +252,27 @@ class DownloadEngine {
   DownloadRecord? byKey(String key) =>
       _records.values.where((r) => r.key == key).firstOrNull;
 
-  /// [records] now and after every change.
-  Stream<List<DownloadRecord>> watchAll() async* {
-    await _whenReady();
-    yield records;
-    yield* _changes.stream.map((_) => records);
-  }
+  /// [records] now and after every change. The changes are followed before
+  /// the first snapshot is taken, in the same step: a change made while it
+  /// is being handed over comes after it instead of being lost.
+  Stream<List<DownloadRecord>> watchAll() => Stream.multi((controller) {
+    StreamSubscription<void>? changes;
+    var cancelled = false;
+    controller.onCancel = () {
+      cancelled = true;
+      return changes?.cancel();
+    };
+    unawaited(
+      _whenReady().then((_) {
+        if (cancelled) return;
+        changes = _changes.stream.listen(
+          (_) => controller.add(records),
+          onDone: controller.close,
+        );
+        controller.add(records);
+      }),
+    );
+  });
 
   /// One record now and after every change, until it is deleted (null).
   Stream<DownloadRecord?> watch(String id) =>
@@ -284,7 +332,21 @@ class DownloadEngine {
     }
 
     final id = existing?.id ?? _newId();
+    await _cleanups[id];
     final plan = request.plan;
+    var replan = false;
+    if (existing != null) {
+      final sameSource = existing.source == request.source;
+      final sameTracks = existing.tracks == request.tracks;
+      final sameOutput = existing.output == request.output;
+      // The file merged for the failed attempt is another one now.
+      if (!sameOutput || (plan == null && !sameTracks)) {
+        await _deleteStaged(id);
+      }
+      // Planned again at its turn from the new source or choice: the plan
+      // on disk would otherwise be used as it is.
+      replan = plan == null && !(sameSource && sameTracks && sameOutput);
+    }
     if (plan != null) {
       final saved = await _readPlan(id);
       if (saved != null && !saved.linesUpWith(plan)) await _wipePieces(id);
@@ -311,9 +373,18 @@ class DownloadEngine {
             error: null,
             source: request.source,
             expiresAt: request.expiresAt,
-            linkDead: false,
+            // A refused link stays refused until a fresh one comes.
+            linkDead:
+                existing != null &&
+                existing.source == request.source &&
+                existing.linkDead,
+            replan: replan,
             tracks: request.tracks,
             output: request.output,
+            stagedPath: null,
+            publishTarget: existing?.output == request.output
+                ? existing?.publishTarget
+                : null,
             updatedAt: now,
           ),
     );
@@ -340,6 +411,8 @@ class DownloadEngine {
     }, DownloadStatus.paused);
     if (!paused) return;
     await _stopJob(id);
+    // Still running from before a kill, with no job to stop yet.
+    if (_recovering.contains(id)) await _cancelTasksOf(id);
     unawaited(_pump());
   }
 
@@ -369,6 +442,8 @@ class DownloadEngine {
     if (record == null) return;
     _emit();
     await _stopJob(id);
+    await _cancelTasksOf(id);
+    _completedEarly.removeWhere((t) => _parseTaskId(t)?.id == id);
 
     final locator = record.outputLocator;
     if (locator != null && !locator.startsWith(_workPrefix)) {
@@ -378,6 +453,7 @@ class DownloadEngine {
         _logger.error(e, st, context: {'id': id, 'step': 'remove'});
       }
     }
+    await _cleanups[id];
     await _store.delete(id);
     await _deleteQuietly(_workDir(id));
     unawaited(_pump());
@@ -418,12 +494,7 @@ class DownloadEngine {
       do {
         _pumpAgain = false;
         while (!_records.values.any((r) => r.isActive)) {
-          final next =
-              (_records.values
-                      .where((r) => r.status == DownloadStatus.queued)
-                      .toList()
-                    ..sort((a, b) => a.createdAt.compareTo(b.createdAt)))
-                  .firstOrNull;
+          final next = _next();
           if (next == null) break;
           await _startSafely(next.id);
         }
@@ -433,6 +504,22 @@ class DownloadEngine {
     } finally {
       _pumping = false;
     }
+  }
+
+  /// The oldest queued download — but one that was running before a kill
+  /// first: its pieces are still running in the platform.
+  DownloadRecord? _next() {
+    final queued = _records.values
+        .where((r) => r.status == DownloadStatus.queued)
+        .toList();
+    if (queued.isEmpty) return null;
+    queued.sort((a, b) {
+      final byRecovery = (_recovering.contains(a.id) ? 0 : 1).compareTo(
+        _recovering.contains(b.id) ? 0 : 1,
+      );
+      return byRecovery != 0 ? byRecovery : a.createdAt.compareTo(b.createdAt);
+    });
+    return queued.first;
   }
 
   /// [_start] without leaving the record active when something throws: the
@@ -470,11 +557,13 @@ class DownloadEngine {
     }, DownloadStatus.resolving)) {
       return;
     }
+    await _cleanups[id];
 
     // A file merged and not handed to the sink yet — a failed publish, or
     // a kill in between — only needs publishing: its pieces went when it
     // was written, so planning would fetch them all again.
-    if (await _hasStagedFile(id)) {
+    if (await _readyToPublish(id)) {
+      _recovering.remove(id);
       if (_transition(id, const {
         DownloadStatus.resolving,
       }, DownloadStatus.downloading)) {
@@ -487,6 +576,9 @@ class DownloadEngine {
     if (plan == null || _records[id]?.status != DownloadStatus.resolving) {
       return;
     }
+    // Only a first start after a kill follows the tasks of the last run;
+    // a plan made again cancelled them (see [_planFor]).
+    final adopt = _recovering.remove(id);
 
     final missing = <_Piece>[];
     var settledBytes = 0;
@@ -501,12 +593,23 @@ class DownloadEngine {
           settledBytes += size;
           continue;
         }
-        // A range cut short (a copy interrupted on desktop): asked again.
+        // Cut short (a range, or a copy interrupted on desktop): asked
+        // again.
         if (size != null) {
           await _deleteQuietly(File(p.join(_trackDir(id, t).path, piece.file)));
         }
         missing.add(_Piece(t, i, track, piece));
       }
+    }
+
+    var record = _records[id];
+    if (record?.status != DownloadStatus.resolving) return;
+    // A new run, saved before any of its tasks exists: after a kill, the
+    // next engine must know which tasks are this attempt's.
+    final run = adopt ? record!.run : record!.run + 1;
+    if (run != record.run) {
+      _put(record.copyWith(run: run), persist: false);
+      await _store.save(_records[id]!);
     }
 
     final progress = DownloadProgress(
@@ -529,27 +632,43 @@ class DownloadEngine {
       return;
     }
 
-    // What the platform still holds after a kill is not asked for twice.
-    final alive = {
-      for (final task in await _transfer.allTasks())
-        if (_parseTaskId(task.taskId)?.id == id) task.taskId,
-    };
+    // What the platform still holds of this run after a kill is followed,
+    // not asked for twice; anything of another run is let go.
+    final alive = <String, Task>{};
+    final stray = <String>[];
+    for (final task in await _transfer.allTasks()) {
+      final ids = _parseTaskId(task.taskId);
+      if (ids?.id != id) continue;
+      if (adopt && ids!.run == run) {
+        alive[task.taskId] = task;
+      } else {
+        stray.add(task.taskId);
+      }
+    }
     if (_records[id]?.status != DownloadStatus.downloading) return;
 
     final job = _jobs[id] = _Job(
       id: id,
+      run: run,
       plan: plan,
       progress: progress,
       settledBytes: settledBytes,
     );
     for (final piece in missing) {
-      final taskId = piece.taskId(id);
+      final taskId = piece.taskId(id, run);
       job.pieces[taskId] = piece;
       job.pending.add(taskId);
-      if (alive.contains(taskId)) {
+      if (alive.containsKey(taskId)) {
         job.inFlight.add(taskId);
       } else {
         job.queue.add(piece);
+      }
+    }
+    await _transfer.cancelTasksWithIds(stray);
+    // A task the platform paused before the kill would wait for good.
+    for (final taskId in job.inFlight.toList()) {
+      if (alive[taskId] case final DownloadTask task when task.allowPause) {
+        await _transfer.resume(task);
       }
     }
 
@@ -557,20 +676,28 @@ class DownloadEngine {
     await _settleFinishedPieces(job);
   }
 
-  /// Whether [id] has its one file written (see `DownloadRecord.stagedPath`)
-  /// and the plan it was written from, which says its extension.
-  Future<bool> _hasStagedFile(String id) async {
-    final staged = _records[id]?.stagedPath;
-    if (staged == null || !staged.startsWith(_workPrefix)) return false;
-    final file = File(
-      p.join(_workDir(id).path, staged.substring(_workPrefix.length)),
-    );
-    return await file.exists() && await _readPlan(id) != null;
+  /// Whether [id] has its one file written — or handed to a sink that
+  /// already holds it — and the plan it came from. Read from the disk, not
+  /// the record: a kill can fall between writing the file and saving that.
+  Future<bool> _readyToPublish(String id) async {
+    final plan = await _readPlan(id);
+    final record = _records[id];
+    if (plan == null || record == null) return false;
+    if (await _stagedFile(id, plan).exists()) return true;
+    final target = record.publishTarget;
+    final sink = _sink;
+    return target != null &&
+        sink is ReservingOutputSink &&
+        await sink.holds(target);
   }
 
+  File _stagedFile(String id, DownloadPlan plan) =>
+      File(p.join(_workDir(id).path, 'output.${plan.extension}'));
+
   /// The plan on disk, or a new one. A plan whose link ran out is planned
-  /// again from a fresh link with the same choice, keeping the pieces on
-  /// disk when they are the same files; otherwise it starts over.
+  /// again from a fresh link with the same choice; one whose request
+  /// changed, from the new request. Either keeps the pieces on disk when
+  /// they are the same files, and otherwise starts over.
   ///
   /// Null when the record was paused or deleted meanwhile: nothing is
   /// written then.
@@ -581,7 +708,10 @@ class DownloadEngine {
         record.linkDead ||
         (record.expiresAt?.isBefore(DateTime.now().add(config.linkMargin)) ??
             false);
-    if (saved != null && !expired) return saved;
+    if (saved != null && !expired && !record.replan) return saved;
+    // Pieces without a plan (a corrupt range took it): whatever they are,
+    // a new plan must not count them as its own.
+    if (saved == null) await _wipePieces(id);
 
     var source = record.source;
     final refresher = _refresher;
@@ -592,15 +722,18 @@ class DownloadEngine {
           .refresh(record)
           .timeout(config.refreshTimeout);
       final current = _records[id];
-      if (current?.status != DownloadStatus.resolving) return null;
+      if (current == null) return null;
+      // Kept even when paused meanwhile: a fresh link may have cost the
+      // user an allowance, and the resume would otherwise mint another.
       _put(
-        current!.copyWith(
+        current.copyWith(
           source: fresh.source,
           expiresAt: fresh.expiresAt,
           linkDead: false,
           metadata: fresh.metadata ?? current.metadata,
         ),
       );
+      if (current.status != DownloadStatus.resolving) return null;
       source = fresh.source;
     }
 
@@ -610,29 +743,27 @@ class DownloadEngine {
     if (saved != null) {
       // Tasks a kill left alive carry the old links.
       await _cancelTasksOf(id);
-      final same = resolved.selectionOf(saved);
-      if (same != null) {
-        final replanned = await resolved.plan(same);
-        // Planning an HLS reads its media playlists: a delete meanwhile
-        // must not get its folder back from the plan being written.
-        if (_records[id]?.status != DownloadStatus.resolving) return null;
-        if (replanned.linesUpWith(saved)) {
-          await _writePlan(id, replanned);
-          return replanned;
-        }
-      }
       if (_records[id]?.status != DownloadStatus.resolving) return null;
-      // Another encode or another choice: the pieces on disk are not these.
-      await _wipePieces(id);
     }
 
     // The record as it is now: a refresh may have changed its metadata,
     // which is what a `CriteriaProvider` decides by.
-    final current = _records[id];
-    if (current?.status != DownloadStatus.resolving) return null;
-    final plan = await resolved.plan(await _selectionFor(current!, resolved));
+    final current = _records[id]!;
+    // The same choice for a fresh link; the request's for a changed one.
+    final same = saved == null || current.replan
+        ? null
+        : resolved.selectionOf(saved);
+    final plan = await resolved.plan(
+      same ?? await _selectionFor(current, resolved),
+    );
+    // Planning an HLS reads its media playlists: a delete meanwhile must
+    // not get its folder back from the plan being written.
     if (_records[id]?.status != DownloadStatus.resolving) return null;
+    // Another encode or another choice: the pieces on disk are not these.
+    if (saved != null && !plan.linesUpWith(saved)) await _wipePieces(id);
     await _writePlan(id, plan);
+    final latest = _records[id];
+    if (latest != null && latest.replan) _put(latest.copyWith(replan: false));
     return plan;
   }
 
@@ -686,9 +817,16 @@ class DownloadEngine {
           for (var i = 0; i < room && job.queue.isNotEmpty; i++)
             job.queue.removeFirst(),
         ];
-        final tasks = [for (final piece in batch) _taskFor(record, piece)];
+        final tasks = [
+          for (final piece in batch) _taskFor(record, piece, job.run),
+        ];
+        // Counted before the answer, so a refill meanwhile sees the room
+        // taken; a refused one is taken back, as the platform holds none.
         job.inFlight.addAll(tasks.map((t) => t.taskId));
         final results = await _transfer.enqueueAll(tasks);
+        for (final (i, accepted) in results.indexed) {
+          if (!accepted) job.inFlight.remove(tasks[i].taskId);
+        }
         // A refused task would never report back: the download would wait
         // for it forever.
         if (results.contains(false)) {
@@ -708,16 +846,18 @@ class DownloadEngine {
   /// [_feed] from an update, failing the download on a refusal.
   void _feedSafely(_Job job) {
     unawaited(
-      _feed(job).catchError((Object e, StackTrace st) async {
+      _feed(job).catchError((Object e, StackTrace st) {
         _logger.error(e, st, context: {'id': job.id, 'step': 'feed'});
-        await _stopJob(job.id);
-        _fail(job.id, const DownloadError(code: DownloadErrorCode.unknown));
+        _failJob(job, const DownloadError(code: DownloadErrorCode.unknown));
       }),
     );
   }
 
   /// A piece that finished while the disk was being read had nobody to tell
   /// yet: without this the download would wait for an update that passed.
+  /// Its file counts only when it can be told apart from one still being
+  /// written: by its size, or because the platform moves files into place
+  /// whole — otherwise only its `complete` update does.
   Future<void> _settleFinishedPieces(_Job job) async {
     for (final taskId in job.inFlight.toList()) {
       if (_jobs[job.id] != job) return;
@@ -725,15 +865,23 @@ class DownloadEngine {
       final file = File(
         p.join(_trackDir(job.id, piece.t).path, piece.planned.file),
       );
-      if (await file.exists()) await _pieceDone(job, taskId, file);
+      final expected = piece.planned.expectedBytes;
+      final done =
+          _completedEarly.remove(taskId) ||
+          (await file.exists() &&
+              (expected != null
+                  ? await _sizeOf(file) == expected
+                  : _copiesInPlace));
+      if (done) await _pieceDone(job, taskId, file);
     }
+    _completedEarly.removeWhere((t) => _parseTaskId(t)?.id == job.id);
   }
 
-  DownloadTask _taskFor(DownloadRecord record, _Piece piece) {
+  DownloadTask _taskFor(DownloadRecord record, _Piece piece, int run) {
     final range = piece.planned.rangeHeader;
     final whole = piece.isWholeFile;
     final task = DownloadTask(
-      taskId: piece.taskId(record.id),
+      taskId: piece.taskId(record.id, run),
       url: piece.planned.url,
       headers: {
         ...?record.source.headers,
@@ -769,23 +917,26 @@ class DownloadEngine {
     final taskId = update.task.taskId;
     final ids = _parseTaskId(taskId);
     if (ids == null) return;
+    final record = _records[ids.id];
     final job = _jobs[ids.id];
 
-    if (update.status == TaskStatus.canceled && _ownCancels.remove(taskId)) {
-      return;
-    }
-    // A task that finished before the engine's cancel reached it never
-    // reports `canceled`: its entry would linger and swallow a later,
-    // real cancel of the same piece.
-    if (update.status.isFinalState) _ownCancels.remove(taskId);
-
-    // Not followed (paused, deleted, finished, or a replay of a piece the
-    // disk already counts). A piece still running for a download that is
-    // not moving has nowhere to go.
-    if (job == null || !job.pending.contains(taskId)) {
-      if (update.status == TaskStatus.running &&
-          !_isMoving(_records[ids.id]?.status)) {
-        await _cancel([taskId]);
+    // Not this run's (a task still being cancelled after a pause, one left
+    // from a kill), or not followed (deleted, finished, or a replay of a
+    // piece the disk already counts).
+    if (job == null || job.run != ids.run || !job.pending.contains(taskId)) {
+      final ofLastRun = record != null && ids.run == record.run;
+      // Between a kill and its start: counted when its job is made.
+      if (update.status == TaskStatus.complete && job == null && ofLastRun) {
+        _completedEarly.add(taskId);
+      }
+      // Still running, or holding partial data, for nobody: let go.
+      final stale =
+          !_isMoving(record?.status) ||
+          (record != null && ids.run < record.run);
+      if ((update.status == TaskStatus.running ||
+              update.status == TaskStatus.paused) &&
+          stale) {
+        await _transfer.cancelTasksWithIds([taskId]);
       }
       return;
     }
@@ -799,24 +950,28 @@ class DownloadEngine {
           File(p.join(_trackDir(job.id, piece.t).path, piece.planned.file)),
         );
       // Cancelled by someone else (a notification button, the system): the
-      // download would wait for it forever, so it is asked for again — only
-      // when it was handed over: one still waiting for room (a late report
-      // from an earlier run) is the feeder's to enqueue, and enqueuing it
-      // here too would fetch it twice. Rebuilt from the plan rather than
-      // taken from the update, which may carry the links of before a
-      // refresh.
+      // download would wait for it forever, so it is asked for again. The
+      // engine never cancels a task of the run it follows, and a cancel of
+      // a piece not handed over (a late report) is the feeder's to deal
+      // with, which enqueues it once.
       case TaskStatus.canceled:
-        final record = _records[job.id];
-        if (record != null && job.inFlight.contains(taskId)) {
-          await _transfer.enqueueAll([_taskFor(record, job.pieces[taskId]!)]);
+        if (job.inFlight.remove(taskId)) {
+          job.queue.addFirst(job.pieces[taskId]!);
+          _feedSafely(job);
+        }
+      // Paused by the platform (whole files allow it): resumed, or — when
+      // it kept nothing to resume from — cancelled, which asks for it again
+      // once the cancel is reported.
+      case TaskStatus.paused:
+        if (update.task case final DownloadTask task) {
+          final resumed = await _transfer.resume(task);
+          if (!resumed &&
+              _jobs[job.id] == job &&
+              job.inFlight.contains(taskId)) {
+            await _transfer.cancelTasksWithIds([taskId]);
+          }
         }
       case TaskStatus.failed || TaskStatus.notFound:
-        // Over already: cancelling it with the rest would leave an own
-        // cancel whose update never comes, and that would swallow a real
-        // one of the same task after a retry.
-        job.inFlight.remove(taskId);
-        job.pending.remove(taskId);
-        await _stopJob(job.id);
         final status =
             update.responseStatusCode ??
             switch (update.exception) {
@@ -825,8 +980,20 @@ class DownloadEngine {
             };
         final description = update.exception?.description ?? '';
         _logger.warn('piece $taskId failed: $status $description');
-        _fail(
-          job.id,
+        // Over already: not cancelled with the rest.
+        job.inFlight.remove(taskId);
+        job.pending.remove(taskId);
+        // 416: the range is outside the file — it is not the file planned.
+        if (status == 416) {
+          _failJob(
+            job,
+            const DownloadError(code: DownloadErrorCode.corrupt),
+            wipe: true,
+          );
+          return;
+        }
+        _failJob(
+          job,
           isOutOfSpace(description)
               ? const DownloadError(code: DownloadErrorCode.noSpace)
               : status != null && status >= 400
@@ -842,30 +1009,48 @@ class DownloadEngine {
   }
 
   void _onProgress(TaskProgressUpdate update) {
-    final ids = _parseTaskId(update.task.taskId);
+    final taskId = update.task.taskId;
+    final ids = _parseTaskId(taskId);
     final job = ids == null ? null : _jobs[ids.id];
-    if (job == null || !job.pending.contains(update.task.taskId)) return;
+    if (job == null || !job.pending.contains(taskId)) return;
     if (update.progress < 0 || update.expectedFileSize <= 0) return;
-    job.received[update.task.taskId] =
-        (update.progress * update.expectedFileSize).round();
+    // The server answered something else than the piece planned — the
+    // whole file for a range whose `If-Range` no longer matched, or a file
+    // that changed: caught now, not after fetching all of it per range.
+    final expected = job.pieces[taskId]!.planned.expectedBytes;
+    if (expected != null && update.expectedFileSize != expected) {
+      _failJob(
+        job,
+        const DownloadError(code: DownloadErrorCode.corrupt),
+        wipe: true,
+      );
+      return;
+    }
+    job.received[taskId] = (update.progress * update.expectedFileSize).round();
     _publishProgress(job);
   }
 
   Future<void> _pieceDone(_Job job, String taskId, File file) async {
-    if (!job.pending.remove(taskId)) return;
+    if (!job.pending.contains(taskId)) return;
+    // Measured before it leaves the pending set: the job may have moved on
+    // meanwhile, and the count must stay exact.
+    final size = await _sizeOf(file);
+    if (_jobs[job.id] != job || !job.pending.remove(taskId)) return;
     job.inFlight.remove(taskId);
     job.received.remove(taskId);
     final piece = job.pieces[taskId]!;
-    final size = await _sizeOf(file);
 
     final expected = piece.planned.expectedBytes;
     if (expected != null && size != expected) {
-      // The server ignored the range, or the file changed under it. The
-      // plan goes too: the next attempt reads the source again.
-      await _stopJob(job.id);
-      await _deleteQuietly(file);
-      await _deleteQuietly(File(p.join(_workDir(job.id).path, _planFile)));
-      _fail(job.id, const DownloadError(code: DownloadErrorCode.corrupt));
+      // The server ignored the range, the file changed under it, or a copy
+      // was cut short. Every piece goes, and the plan with them: the next
+      // attempt reads the source again, and old ranges of another version
+      // of the file must not be spliced with new ones.
+      _failJob(
+        job,
+        const DownloadError(code: DownloadErrorCode.corrupt),
+        wipe: true,
+      );
       return;
     }
 
@@ -898,32 +1083,73 @@ class DownloadEngine {
     _put(record.copyWith(progress: job.progress), persist: false);
   }
 
-  /// Drops the job, waits for a batch being enqueued, and cancels what it
-  /// had handed over.
+  /// Fails the download [job] runs, unless it already moved on (paused,
+  /// deleted, failed, or started again): decided at once, before anything
+  /// is awaited, so a continuation never fails a newer attempt. The rest
+  /// of its tasks are cancelled — and with [wipe], every piece and the plan
+  /// removed — before the next start of the download may read its folder.
+  void _failJob(
+    _Job job,
+    DownloadError error, {
+    bool linkDead = false,
+    bool wipe = false,
+  }) {
+    if (_jobs[job.id] != job) return;
+    _fail(job.id, error, linkDead: linkDead);
+    _track(job.id, () async {
+      await _stop(job);
+      if (wipe) await _wipePieces(job.id);
+    });
+  }
+
+  /// Runs [body] as [id]'s clean-up (see [_cleanups]).
+  void _track(String id, Future<void> Function() body) {
+    final previous = _cleanups[id] ?? Future<void>.value();
+    late final Future<void> done;
+    done = previous
+        .then((_) => body())
+        .catchError(
+          (Object e, StackTrace st) =>
+              _logger.error(e, st, context: {'id': id, 'step': 'cleanup'}),
+        )
+        .whenComplete(() {
+          if (identical(_cleanups[id], done)) _cleanups.remove(id);
+        });
+    _cleanups[id] = done;
+  }
+
+  /// Drops [id]'s job, if any, and cancels what it had handed over.
   Future<void> _stopJob(String id) async {
     final job = _jobs.remove(id);
-    if (job == null) return;
+    if (job != null) await _stop(job);
+  }
+
+  /// Waits for a batch being enqueued and cancels what [job] had handed
+  /// over. Once per job.
+  Future<void> _stop(_Job job) async {
+    if (_jobs[job.id] == job) _jobs.remove(job.id);
+    if (job.stopped) return;
+    job.stopped = true;
     try {
       await job.feeding;
     } on Object {
       // Reported by whoever fed it.
     }
-    await _cancel(job.inFlight.toList());
+    await _transfer.cancelTasksWithIds(job.inFlight.toList());
     // A pause keeps the progress it had reached.
-    final record = _records[id];
-    if (record != null) _put(record.copyWith(progress: job.progress));
+    final record = _records[job.id];
+    if (record != null && record.run == job.run) {
+      _put(record.copyWith(progress: job.progress));
+    }
   }
 
-  Future<void> _cancel(List<String> taskIds) async {
-    if (taskIds.isEmpty) return;
-    _ownCancels.addAll(taskIds);
-    await _transfer.cancelTasksWithIds(taskIds);
+  Future<void> _cancelTasksOf(String id) async {
+    _recovering.remove(id);
+    await _transfer.cancelTasksWithIds([
+      for (final task in await _transfer.allTasks())
+        if (_parseTaskId(task.taskId)?.id == id) task.taskId,
+    ]);
   }
-
-  Future<void> _cancelTasksOf(String id) async => _cancel([
-    for (final task in await _transfer.allTasks())
-      if (_parseTaskId(task.taskId)?.id == id) task.taskId,
-  ]);
 
   // ---------------------------------------------------------------------
   // Assembly
@@ -983,13 +1209,29 @@ class DownloadEngine {
 
   /// Writes the one file in the download's folder — merged, joined, or the
   /// source's own — then hands it to the sink. The file is a checkpoint: a
-  /// kill or a failed publish after it only publishes again.
+  /// kill or a failed publish after it only publishes again; and a sink
+  /// that reserves its place lets a kill after the move find the file.
   Future<void> _exportFile(DownloadRecord record, DownloadPlan plan) async {
     final id = record.id;
     final work = _workDir(id);
-    final staged = File(p.join(work.path, 'output.${plan.extension}'));
+    final staged = _stagedFile(id, plan);
+    final sink = _sink;
+    final reserving = sink is ReservingOutputSink ? sink : null;
 
-    if (!(record.stagedPath != null && await staged.exists())) {
+    // Moved by a publish that a kill cut before the record said done.
+    final target = record.publishTarget;
+    if (reserving != null &&
+        target != null &&
+        await reserving.holds(target) &&
+        (!await staged.exists() ||
+            await _sizeOf(staged) == await _sizeOfLocator(id, target))) {
+      await _deleteQuietly(staged);
+      await _tidy(record, plan, staged, const []);
+      await _finishFile(id, target);
+      return;
+    }
+
+    if (!await staged.exists()) {
       final inputs = [
         for (final (t, track) in plan.tracks.indexed)
           await _assembler.assemble(track, _trackDir(id, t)),
@@ -1013,35 +1255,51 @@ class DownloadEngine {
         await File(inputs.single.path).rename(staged.path);
       }
 
-      final sidecars = record.output.subtitleSidecars
-          ? [
-              for (final input in inputs)
-                if (input.kind == TrackKind.subtitle) input,
-            ]
-          : const <MuxInput>[];
       final current = _records[id];
       if (current == null) return;
-      // Saved before the pieces go: a kill in between must find the file
-      // to publish, not a download with nothing left to assemble.
       _put(
         current.copyWith(stagedPath: '${_workPrefix}output.${plan.extension}'),
         persist: false,
       );
       await _store.save(_records[id]!);
-      await _keepOnly(work, staged, sidecars);
+      await _tidy(record, plan, staged, [
+        for (final input in inputs)
+          if (input.kind == TrackKind.subtitle) input,
+      ]);
+    } else {
+      // Picked up after a kill or a failed publish: the pieces may still
+      // be there, and the sidecars not listed yet.
+      await _tidy(record, plan, staged, null);
     }
 
     final String locator;
     try {
-      locator = await _sink.publish(
-        staged,
+      final reserved = await reserving?.reserve(
         record.name,
         plan.extension,
         record,
       );
+      if (reserved != null) {
+        final current = _records[id];
+        if (current == null) return;
+        _put(current.copyWith(publishTarget: reserved), persist: false);
+        await _store.save(_records[id]!);
+        locator = await reserving!.publishTo(staged, reserved, record);
+      } else {
+        locator = await sink.publish(
+          staged,
+          record.name,
+          plan.extension,
+          record,
+        );
+      }
     } on Object catch (e) {
       throw _PublishException(e);
     }
+    await _finishFile(id, locator);
+  }
+
+  Future<void> _finishFile(String id, String locator) async {
     final size = await _sizeOfLocator(id, locator) ?? 0;
     if (!_finish(id, locator: locator, kind: OutputKind.file, bytes: size)) {
       // Deleted while it was being written: nothing points at it any more.
@@ -1058,40 +1316,65 @@ class DownloadEngine {
     return path == null ? null : _sizeOf(File(path));
   }
 
-  /// Removes everything in [work] but the record, [staged] and the
-  /// [sidecars], which move to `subs/` and are listed in `subtitles.json`.
-  Future<void> _keepOnly(
-    Directory work,
+  /// Leaves the work folder with the record, the plan, [staged] and — when
+  /// asked for — the subtitle sidecars in `subs/`, listed in
+  /// `subtitles.json`. Idempotent, so a kill anywhere in it is finished by
+  /// the next run: [sidecars] null means "work them out from what is on
+  /// disk", which is what a start after a kill has.
+  Future<void> _tidy(
+    DownloadRecord record,
+    DownloadPlan plan,
     File staged,
-    List<MuxInput> sidecars,
+    List<MuxInput>? sidecars,
   ) async {
-    final subs = Directory(p.join(work.path, 'subs'));
-    final kept = <PackagedSubtitle>[];
-    for (final (i, s) in sidecars.indexed) {
-      await subs.create(recursive: true);
-      final target = p.join(subs.path, '$i${p.extension(s.path)}');
-      await File(s.path).rename(target);
-      kept.add(
-        PackagedSubtitle(
-          path: p.relative(target, from: work.path),
-          label: s.label,
-          language: s.language,
-          forced: s.forced,
-        ),
-      );
+    final work = _workDir(record.id);
+    final listed = File(p.join(work.path, _subtitlesFile));
+    if (record.output.subtitleSidecars && !await listed.exists()) {
+      final inputs =
+          sidecars ??
+          [
+            for (final (t, track) in plan.tracks.indexed)
+              if (track.kind == TrackKind.subtitle)
+                ?await _assembleQuietly(track, _trackDir(record.id, t)),
+          ];
+      final subs = Directory(p.join(work.path, _subsDir));
+      final kept = <PackagedSubtitle>[];
+      for (final (i, s) in inputs.indexed) {
+        await subs.create(recursive: true);
+        final target = p.join(subs.path, '$i${p.extension(s.path)}');
+        await File(s.path).rename(target);
+        kept.add(
+          PackagedSubtitle(
+            path: p.relative(target, from: work.path),
+            label: s.label,
+            language: s.language,
+            forced: s.forced,
+          ),
+        );
+      }
+      // Listed before the pieces go: a kill after this finds them done.
+      if (kept.isNotEmpty) await LocalPackager.writeSubtitles(work, kept);
     }
 
     final keep = {
       p.normalize(staged.path),
       p.normalize(p.join(work.path, JsonRecordStore.recordFile)),
       p.normalize(p.join(work.path, _planFile)),
+      p.normalize(listed.path),
+      p.normalize(p.join(work.path, _subsDir)),
     };
     await for (final entity in work.list()) {
-      final path = p.normalize(entity.path);
-      if (keep.contains(path) || path == p.normalize(subs.path)) continue;
+      if (keep.contains(p.normalize(entity.path))) continue;
       await _deleteQuietly(entity);
     }
-    if (kept.isNotEmpty) await LocalPackager.writeSubtitles(work, kept);
+  }
+
+  Future<MuxInput?> _assembleQuietly(PlannedTrack track, Directory dir) async {
+    try {
+      return await _assembler.assemble(track, dir);
+    } on SourceException {
+      return null;
+    }
   }
 
   /// Answers whether the record was still there to finish.
@@ -1108,6 +1391,7 @@ class DownloadEngine {
       outputLocator: locator,
       outputKind: kind,
       stagedPath: null,
+      publishTarget: null,
       error: null,
       progress: r.progress.copyWith(
         bytes: bytes,
@@ -1120,16 +1404,20 @@ class DownloadEngine {
   // ---------------------------------------------------------------------
   // Reconciliation
 
-  /// The engine's tasks whose download is gone or not moving: an ill-timed
-  /// kill leaves them, and they would keep fetching into a folder nobody
-  /// reads.
+  /// The engine's tasks whose download is gone or not moving, or of a run
+  /// before the record's last one: an ill-timed kill leaves them, and they
+  /// would keep fetching into a folder nobody reads. Task ids from before
+  /// runs were part of them do not parse, and go too.
   Future<void> _cancelStrayTasks() async {
     final stray = [
       for (final task in await _transfer.allTasks())
-        if (!_isMoving(_records[_parseTaskId(task.taskId)?.id]?.status))
+        if (_parseTaskId(task.taskId) case final ids
+            when ids == null ||
+                !_isMoving(_records[ids.id]?.status) ||
+                ids.run != _records[ids.id]!.run)
           task.taskId,
     ];
-    await _cancel(stray);
+    await _transfer.cancelTasksWithIds(stray);
   }
 
   static bool _isMoving(DownloadStatus? status) => switch (status) {
@@ -1238,6 +1526,20 @@ class DownloadEngine {
     }
   }
 
+  /// The one file of a failed attempt (`output.<ext>`), and its sidecars.
+  Future<void> _deleteStaged(String id) async {
+    final work = _workDir(id);
+    if (!await work.exists()) return;
+    await for (final entity in work.list()) {
+      final name = p.basename(entity.path);
+      if (name.startsWith('output.') ||
+          name == _subtitlesFile ||
+          name == _subsDir) {
+        await _deleteQuietly(entity);
+      }
+    }
+  }
+
   /// Name → size of the files in [dir]; empty when it does not exist yet.
   Future<Map<String, int>> _sizesIn(Directory dir) async {
     if (!await dir.exists()) return const {};
@@ -1287,13 +1589,17 @@ class DownloadEngine {
     return '$time$noise';
   }
 
-  static ({String id, int track, int piece})? _parseTaskId(String taskId) {
+  /// `ode-<id>-<run>-<track>-<piece>`.
+  static ({String id, int run, int track, int piece})? _parseTaskId(
+    String taskId,
+  ) {
     final parts = taskId.split('-');
-    if (parts.length != 4 || parts.first != _taskPrefix) return null;
-    final track = int.tryParse(parts[2]);
-    final piece = int.tryParse(parts[3]);
-    if (track == null || piece == null) return null;
-    return (id: parts[1], track: track, piece: piece);
+    if (parts.length != 5 || parts.first != _taskPrefix) return null;
+    final run = int.tryParse(parts[2]);
+    final track = int.tryParse(parts[3]);
+    final piece = int.tryParse(parts[4]);
+    if (run == null || track == null || piece == null) return null;
+    return (id: parts[1], run: run, track: track, piece: piece);
   }
 
   static const _taskPrefix = 'ode';
@@ -1313,19 +1619,24 @@ class _Piece {
   bool get isWholeFile =>
       track.assembly == TrackAssembly.single && planned.rangeStart == null;
 
-  String taskId(String id) => '${DownloadEngine._taskPrefix}-$id-$t-$index';
+  String taskId(String id, int run) =>
+      '${DownloadEngine._taskPrefix}-$id-$run-$t-$index';
 }
 
-/// The download in flight, in memory.
+/// The download in flight, in memory: one run of it.
 class _Job {
   _Job({
     required this.id,
+    required this.run,
     required this.plan,
     required this.progress,
     required this.settledBytes,
   });
 
   final String id;
+
+  /// See `DownloadRecord.run`.
+  final int run;
   final DownloadPlan plan;
   DownloadProgress progress;
   int settledBytes;
@@ -1347,6 +1658,9 @@ class _Job {
 
   Future<void>? feeding;
   bool feedAgain = false;
+
+  /// Its tasks were cancelled (see `DownloadEngine._stop`).
+  bool stopped = false;
 }
 
 class _PublishException implements Exception {

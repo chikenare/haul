@@ -311,6 +311,46 @@ void main() {
       ]);
     });
 
+    test('a change right after listening is not lost', () async {
+      final engine = await env.engine();
+      final (:id, outcome: _) = await engine.enqueue(
+        request(url: '$cdn/missing.mpd'),
+      );
+      await waitForStatus(engine, id, DownloadStatus.failed);
+
+      final seen = <List<DownloadRecord>>[];
+      final sub = engine.watchAll().listen((records) {
+        seen.add(records);
+        // Made while the first snapshot is being handed over.
+        if (seen.length == 1) unawaited(engine.updateMetadata(id, {'v': 1}));
+      });
+      addTearDown(sub.cancel);
+      await waitUntil(() => seen.isNotEmpty);
+      await settle();
+
+      expect(seen.last.single.metadata, {'v': 1});
+    });
+
+    test('a change between listening and the first snapshot is in it, or '
+        'after it', () async {
+      final engine = await env.engine();
+      final (:id, outcome: _) = await engine.enqueue(
+        request(url: '$cdn/missing.mpd'),
+      );
+      await waitForStatus(engine, id, DownloadStatus.failed);
+
+      final seen = <List<DownloadRecord>>[];
+      final sub = engine.watchAll().listen(seen.add);
+      addTearDown(sub.cancel);
+      for (var i = 0; i < 5; i++) {
+        unawaited(engine.updateMetadata(id, {'v': i}));
+        await Future<void>.delayed(Duration.zero);
+      }
+      await settle();
+
+      expect(seen.last.single.metadata, {'v': 4});
+    });
+
     test('watch follows one record until it is deleted', () async {
       final engine = await env.engine();
       final (:id, outcome: _) = await engine.enqueue(request());
@@ -336,7 +376,10 @@ void main() {
       final engine = await env.engine(
         config: const EngineConfig(progressInterval: Duration(hours: 1)),
       );
-      final (:id, outcome: _) = await engine.enqueue(request(url: fileUrl));
+      env.routes['$cdn/k.mp4'] = fileResponse(length: 1000);
+      final (:id, outcome: _) = await engine.enqueue(
+        request(url: '$cdn/k.mp4'),
+      );
       await waitUntil(() => env.transfer.enqueued.length == 1);
       final task = env.transfer.enqueued.single;
       var emissions = 0;
@@ -358,7 +401,10 @@ void main() {
       final engine = await env.engine(
         config: const EngineConfig(progressInterval: Duration.zero),
       );
-      final (:id, outcome: _) = await engine.enqueue(request(url: fileUrl));
+      env.routes['$cdn/k.mp4'] = fileResponse(length: 1000);
+      final (:id, outcome: _) = await engine.enqueue(
+        request(url: '$cdn/k.mp4'),
+      );
       await waitUntil(() => env.transfer.enqueued.length == 1);
       final task = env.transfer.enqueued.single;
 

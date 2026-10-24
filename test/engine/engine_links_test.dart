@@ -40,7 +40,7 @@ void main() {
         const DownloadError(code: DownloadErrorCode.http, httpStatus: 403),
       );
       expect(record.linkDead, isTrue);
-      expect(env.transfer.inFlight, isEmpty);
+      await waitUntil(() => env.transfer.inFlight.isEmpty);
     },
   );
 
@@ -263,7 +263,8 @@ void main() {
     final engine = await env.engine(refresher: refresher);
     final id = await refusedAfterTwo(engine);
     final stale = DownloadTask(
-      taskId: 'ode-$id-0-2',
+      // Of the first run, with the old link.
+      taskId: 'ode-$id-1-0-2',
       url: '$cdn/v720/2.m4s?t=first',
       directory: p.join('offline_engine', id, 't0'),
     );

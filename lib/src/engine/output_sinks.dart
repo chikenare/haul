@@ -27,7 +27,7 @@ class PrivateSink implements OutputSink {
 /// taken name becomes `Name (2).ext`. Without a folder ([root] answers
 /// null) the file stays private; a folder that cannot be written fails the
 /// publish, so the user is told rather than finding the file elsewhere.
-class DirectorySink implements OutputSink {
+class DirectorySink implements ReservingOutputSink {
   const DirectorySink(this.root, {this.folders = true});
 
   final Future<String?> Function() root;
@@ -42,11 +42,21 @@ class DirectorySink implements OutputSink {
     String extension,
     DownloadRecord record,
   ) async {
-    final base = await root();
-    if (base == null) {
+    final target = await reserve(name, extension, record);
+    if (target == null) {
       return const PrivateSink().publish(staged, name, extension, record);
     }
+    return publishTo(staged, target, record);
+  }
 
+  @override
+  Future<String?> reserve(
+    OutputName name,
+    String extension,
+    DownloadRecord record,
+  ) async {
+    final base = await root();
+    if (base == null) return null;
     final dir = p.joinAll([
       base,
       // A blank folder is no level at all, not one called `download`.
@@ -54,11 +64,32 @@ class DirectorySink implements OutputSink {
         for (final folder in name.folders)
           if (folder.trim().isNotEmpty) safeFileName(folder),
     ]);
-    await Directory(dir).create(recursive: true);
-    final target = await _freePath(dir, safeFileName(name.baseName), extension);
+    return _freePath(dir, safeFileName(name.baseName), extension);
+  }
+
+  @override
+  Future<String> publishTo(
+    File staged,
+    String locator,
+    DownloadRecord record,
+  ) async {
+    await Directory(p.dirname(locator)).create(recursive: true);
+    // Taken since it was reserved (a retry after a failed move, or someone
+    // else's file): never over it.
+    final target = await File(locator).exists()
+        ? await _freePath(
+            p.dirname(locator),
+            p.basenameWithoutExtension(locator),
+            p.extension(locator).replaceFirst('.', ''),
+          )
+        : locator;
     await _move(staged, target);
     return target;
   }
+
+  @override
+  Future<bool> holds(String locator) async =>
+      p.isAbsolute(locator) && await File(locator).exists();
 
   @override
   Future<void> remove(String locator) async {
@@ -108,7 +139,13 @@ Future<void> moveFile(
       }
       rethrow;
     }
-    await from.delete();
+    // The file is in place: a source that cannot go (locked on Windows)
+    // must not fail a publish that worked. It goes with the work folder.
+    try {
+      await from.delete();
+    } on FileSystemException {
+      // Left behind.
+    }
   }
 }
 

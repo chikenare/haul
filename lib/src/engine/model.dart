@@ -259,6 +259,18 @@ abstract class DownloadRecord with _$DownloadRecord {
     /// The server refused the source's link: the next attempt asks the app
     /// for a fresh one, whatever [expiresAt] says.
     @Default(false) bool linkDead,
+
+    /// The source, tracks or output changed since the last plan (a failed
+    /// download asked for again): the next start plans again from the
+    /// stored source — without asking for a fresh link — keeping the pieces
+    /// that still line up.
+    @Default(false) bool replan,
+
+    /// Which attempt the pieces in flight belong to; part of every task id.
+    /// Each start that hands pieces over takes a new one, so an update of a
+    /// task from an earlier attempt — still being cancelled after a pause,
+    /// or left over from a kill — is never taken for one of this attempt.
+    @Default(0) int run,
     @_TrackChoiceConverter() @Default(TrackChoice.policy()) TrackChoice tracks,
     @Default(OutputMode()) OutputMode output,
 
@@ -270,6 +282,12 @@ abstract class DownloadRecord with _$DownloadRecord {
     /// The one file, written and not yet handed to the output sink: what a
     /// kill between the two picks up from instead of merging again.
     String? stagedPath,
+
+    /// Where the output sink was told to put the one file, saved before it
+    /// moves it (see `ReservingOutputSink`): a kill after the move and
+    /// before the record says done finds the file there instead of
+    /// fetching everything again.
+    String? publishTarget,
     @Default(DownloadProgress()) DownloadProgress progress,
     required DateTime createdAt,
     required DateTime updatedAt,

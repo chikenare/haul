@@ -40,10 +40,10 @@ void main() {
     env.transfer.inFlight.remove(finishedDead.taskId);
     // Leftovers: of a paused title, and of one deleted long ago.
     final ofPaused = DownloadTask(
-      taskId: 'ode-${paused.id}-0-0',
+      taskId: 'ode-${paused.id}-0-0-0',
       url: '$cdn/x',
     );
-    final ofGone = DownloadTask(taskId: 'ode-gone-0-0', url: '$cdn/x');
+    final ofGone = DownloadTask(taskId: 'ode-gone-1-0-0', url: '$cdn/x');
     env.transfer.alive.addAll([ofPaused, ofGone]);
     final enqueuedBefore = env.transfer.enqueued.length;
 

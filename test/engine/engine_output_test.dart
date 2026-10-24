@@ -213,12 +213,12 @@ void main() {
       expect(dressed, [id]);
       expect(engine.byId(id)!.progress.segmented, isFalse);
 
-      await env.transfer.complete(task, bytes: 1000);
+      await env.transfer.complete(task, bytes: 10);
       final record = await waitForStatus(engine, id, DownloadStatus.done);
 
       expect(env.ffmpeg.runs, isEmpty);
       expect(record.outputLocator, p.join(out.path, 'La Película (2026).mp4'));
-      expect(File(record.outputLocator!).lengthSync(), 1000);
+      expect(File(record.outputLocator!).lengthSync(), 10);
     });
 
     test('a package asked of a plain file comes out as the file', () async {
@@ -296,9 +296,14 @@ void main() {
       final record = await waitForStatus(engine, id, DownloadStatus.failed);
 
       expect(record.error?.code, DownloadErrorCode.corrupt);
-      expect(env.planFile(id).existsSync(), isFalse);
-      expect(File(p.join(env.work(id), 't0', '0.part')).existsSync(), isFalse);
-      // The other range in flight is let go.
+      // Cleaned up right after the failure: every piece and the plan go,
+      // and the other range in flight is let go.
+      await waitUntil(
+        () =>
+            !env.planFile(id).existsSync() &&
+            !Directory(p.join(env.work(id), 't0')).existsSync() &&
+            env.transfer.canceledIds.isNotEmpty,
+      );
       expect(env.transfer.canceledIds, [env.transfer.enqueued.last.taskId]);
     });
   });
@@ -345,8 +350,13 @@ void main() {
 
     expect(record.error?.code, DownloadErrorCode.network);
     // The rest in flight is cancelled.
-    expect(env.transfer.inFlight, isEmpty);
+    // The rest in flight is cancelled, the failed one with it not.
+    await waitUntil(() => env.transfer.inFlight.isEmpty);
     expect(env.transfer.canceledIds, hasLength(5));
+    expect(
+      env.transfer.canceledIds,
+      isNot(contains(env.transfer.enqueued.first.taskId)),
+    );
   });
 
   test('a source that cannot be read fails at once', () async {

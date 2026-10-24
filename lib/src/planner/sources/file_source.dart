@@ -51,7 +51,13 @@ class FileSource extends ResolvedSource {
                       1,
                 ),
             ]
-          : [PlannedPiece(url: request.url, file: '0.$extension')],
+          : [
+              PlannedPiece(
+                url: request.url,
+                file: '0.$extension',
+                size: _identityLength,
+              ),
+            ],
       sourceId: 'file',
       ifRange: ranged ? _strongEtag : null,
       fileExtension: ranged ? extension : null,
@@ -74,6 +80,14 @@ class FileSource extends ResolvedSource {
   bool get acceptsRanges =>
       response.headers['accept-ranges']?.toLowerCase().contains('bytes') ??
       false;
+
+  /// The size the file arrives with: only when the server sends it as is
+  /// — a compressed body's length is not the file's.
+  int? get _identityLength {
+    final encoding = response.headers['content-encoding']?.toLowerCase();
+    if (encoding != null && encoding != 'identity') return null;
+    return response.contentLength;
+  }
 
   /// A weak ETag (`W/"…"`) cannot validate a range.
   String? get _strongEtag {
