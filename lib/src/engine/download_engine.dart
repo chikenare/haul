@@ -1445,6 +1445,9 @@ class DownloadEngine {
       await _tidy(record, plan, staged, null);
     }
 
+    // Measured before it goes: a sink may answer a locator that is not a
+    // path (a content URI), and the file would finish weighing nothing.
+    final size = await _sizeOf(staged);
     final String locator;
     try {
       final reserved = await reserving?.reserve(
@@ -1469,11 +1472,11 @@ class DownloadEngine {
     } on Object catch (e) {
       throw _PublishException(e);
     }
-    await _finishFile(id, locator);
+    await _finishFile(id, locator, stagedSize: size);
   }
 
-  Future<void> _finishFile(String id, String locator) async {
-    final size = await _sizeOfLocator(id, locator) ?? 0;
+  Future<void> _finishFile(String id, String locator, {int? stagedSize}) async {
+    final size = await _sizeOfLocator(id, locator) ?? stagedSize ?? 0;
     if (!_finish(id, locator: locator, kind: OutputKind.file, bytes: size)) {
       // Deleted while it was being written: nothing points at it any more.
       await _sink.remove(locator);

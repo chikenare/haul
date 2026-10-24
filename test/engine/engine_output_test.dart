@@ -98,6 +98,20 @@ void main() {
       expect(Directory(p.join(env.work(id), 't0')).existsSync(), isFalse);
     });
 
+    test('a sink answering a URI: the file weighs what was written', () async {
+      final engine = await env.engine(sink: _UriSink());
+      final (:id, outcome: _) = await engine.enqueue(
+        request(output: OutputMode.file),
+      );
+      await waitUntil(() => env.transfer.enqueued.length == 6);
+      await env.transfer.completeAll();
+      final record = await waitForStatus(engine, id, DownloadStatus.done);
+
+      expect(record.outputLocator, 'content://media/1');
+      expect(engine.outputPath(record), isNull);
+      expect(record.progress.bytes, 3, reason: "the fake ffmpeg's 'mkv'");
+    });
+
     test('a taken name becomes "Name (2)"', () async {
       final out = Directory(p.join(env.dir.path, 'Movies'))..createSync();
       File(p.join(out.path, 'La Película (2026).mkv')).writeAsStringSync('x');
@@ -406,4 +420,21 @@ void main() {
     await engine.updateMetadata(id, {'b': 2});
     expect(engine.byId(id)!.metadata, {'b': 2});
   });
+}
+
+/// A sink like Android's storage access: the file goes, a URI comes back.
+class _UriSink implements OutputSink {
+  @override
+  Future<String> publish(
+    File staged,
+    OutputName name,
+    String extension,
+    DownloadRecord record,
+  ) async {
+    await staged.delete();
+    return 'content://media/1';
+  }
+
+  @override
+  Future<void> remove(String locator) async {}
 }
