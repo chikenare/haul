@@ -777,7 +777,11 @@ class DownloadEngine {
       totalPieces: plan.pieceCount,
       bytes: settledBytes,
       totalBytes: plan.expectedBytes,
-      segmented: plan.isSegmented,
+      // A file in ranges weighs exactly what its server said: counted by
+      // bytes, not in 16 MB steps.
+      segmented: plan.tracks.any(
+        (t) => t.pieces.length > 1 && t.assembly != TrackAssembly.ranges,
+      ),
     );
     final started = _transition(
       id,

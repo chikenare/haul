@@ -174,7 +174,8 @@ abstract class DownloadProgress with _$DownloadProgress {
     @Default(0) int totalBytes,
 
     /// Counted by pieces rather than bytes: a fragmented source's weight is
-    /// only an estimate from its bitrate.
+    /// only an estimate from its bitrate. A plain file — in byte ranges or
+    /// not — is counted by bytes.
     @Default(false) bool segmented,
   }) = _DownloadProgress;
 

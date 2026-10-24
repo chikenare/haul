@@ -256,6 +256,11 @@ void main() {
         request(url: rangedUrl, output: OutputMode.file),
       );
       await waitUntil(() => env.transfer.enqueued.length == 2);
+      expect(
+        engine.byId(id)!.progress.segmented,
+        isFalse,
+        reason: 'counted by bytes, not in 16 MB steps',
+      );
 
       final tasks = env.transfer.enqueued;
       expect(tasks.map((t) => t.headers['Range']), [
