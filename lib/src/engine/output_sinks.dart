@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:meta/meta.dart';
 import 'package:offline_engine/src/engine/extension_points.dart';
 import 'package:offline_engine/src/engine/model.dart';
 import 'package:path/path.dart' as p;
@@ -24,7 +25,8 @@ class PrivateSink implements OutputSink {
 /// Moves the file into a folder of the user's — their Downloads, or one
 /// they picked — under the record's folders, never over another file: a
 /// taken name becomes `Name (2).ext`. Without a folder ([root] answers
-/// null, or it cannot be written) the file stays private.
+/// null) the file stays private; a folder that cannot be written fails the
+/// publish, so the user is told rather than finding the file elsewhere.
 class DirectorySink implements OutputSink {
   const DirectorySink(this.root, {this.folders = true});
 
@@ -47,7 +49,10 @@ class DirectorySink implements OutputSink {
 
     final dir = p.joinAll([
       base,
-      if (folders) ...name.folders.map(safeFileName),
+      // A blank folder is no level at all, not one called `download`.
+      if (folders)
+        for (final folder in name.folders)
+          if (folder.trim().isNotEmpty) safeFileName(folder),
     ]);
     await Directory(dir).create(recursive: true);
     final target = await _freePath(dir, safeFileName(name.baseName), extension);
@@ -74,28 +79,69 @@ class DirectorySink implements OutputSink {
     return candidate;
   }
 
-  /// A rename on the same volume; otherwise a copy, which is what leaving
-  /// application support for external storage takes.
-  static Future<void> _move(File from, String to) async {
+  static Future<void> _move(File from, String to) => moveFile(from, to);
+}
+
+/// A rename on the same volume; otherwise a copy, which is what leaving
+/// application support for external storage takes. The copy goes to a
+/// `.partial` that is removed when it fails — a full card would otherwise
+/// leave half a movie in the user's folder — and [from] stays for a retry.
+@visibleForTesting
+Future<void> moveFile(
+  File from,
+  String to, {
+  Future<File> Function(File file, String to)? rename,
+}) async {
+  final doRename = rename ?? (file, to) => file.rename(to);
+  try {
+    await doRename(from, to);
+  } on FileSystemException {
+    final partial = File('$to.partial');
     try {
-      await from.rename(to);
-    } on FileSystemException {
-      final partial = File('$to.partial');
       await from.copy(partial.path);
       await partial.rename(to);
-      await from.delete();
+    } on Object {
+      try {
+        if (await partial.exists()) await partial.delete();
+      } on FileSystemException {
+        // Nothing more to do; the error below is what matters.
+      }
+      rethrow;
     }
+    await from.delete();
   }
 }
 
 /// [name] without what file systems refuse (`<>:"/\|?*`, control
-/// characters, trailing dots and spaces), never empty.
+/// characters, trailing dots and spaces, Windows device names), never empty.
 String safeFileName(String name, {String fallback = 'download'}) {
-  final cleaned = name
-      .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim()
-      .replaceAll(RegExp(r'[. ]+$'), '');
+  String trimEnd(String s) => s.trim().replaceAll(RegExp(r'[. ]+$'), '');
+
+  var cleaned = trimEnd(
+    name
+        .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' '),
+  );
+  if (cleaned.length > _maxNameLength) {
+    var end = _maxNameLength;
+    // Not between the two halves of a surrogate pair: half an emoji is not
+    // a valid name on every file system.
+    if (_isHighSurrogate(cleaned.codeUnitAt(end - 1))) end--;
+    // Trimmed again: the cut may end in a dot or a space.
+    cleaned = trimEnd(cleaned.substring(0, end));
+  }
   if (cleaned.isEmpty) return fallback;
-  return cleaned.length > 150 ? cleaned.substring(0, 150).trim() : cleaned;
+  // Windows opens the device for `CON`, `NUL`, `COM1`… even with an
+  // extension, so `NUL.mkv` is not a file there.
+  if (_windowsDevices.hasMatch(cleaned.split('.').first)) return '${cleaned}_';
+  return cleaned;
 }
+
+const _maxNameLength = 150;
+
+bool _isHighSurrogate(int unit) => unit >= 0xD800 && unit <= 0xDBFF;
+
+final _windowsDevices = RegExp(
+  r'^(con|prn|aux|nul|com[0-9]|lpt[0-9])\s*$',
+  caseSensitive: false,
+);

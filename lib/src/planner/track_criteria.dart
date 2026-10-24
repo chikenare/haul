@@ -10,9 +10,12 @@ sealed class TrackPreference {
   static TrackPreference parse(String? value) => switch (value) {
     null || 'all' => const AllTracks(),
     'none' => const NoTracks(),
-    _ when value.startsWith(_languagePrefix) => LanguageTracks(
-      value.substring(_languagePrefix.length).split(','),
-    ),
+    // Empty entries dropped: `LanguageTracks([])` encodes as `lang:`, which
+    // `split` would read back as one empty language.
+    _ when value.startsWith(_languagePrefix) => LanguageTracks([
+      for (final language in value.substring(_languagePrefix.length).split(','))
+        if (language.isNotEmpty) language,
+    ]),
     _ => const AllTracks(),
   };
 

@@ -35,8 +35,10 @@ class JsonRecordStore implements RecordStore {
   /// folder back.
   final Set<String> _deleted = {};
 
-  /// Every readable record. Folders without one, unreadable ones and what a
-  /// delete left in the trash go.
+  /// Every readable record. Folders without one and what a delete left in
+  /// the trash go. A record that is there but cannot be read is left alone:
+  /// it may be a newer version's, or a file another process holds for a
+  /// moment, and deleting it would delete a finished download.
   @override
   Future<List<DownloadRecord>> loadAll() async {
     final root = await _root();
@@ -49,12 +51,12 @@ class JsonRecordStore implements RecordStore {
         await _deleteQuietly(entity);
         continue;
       }
-      final record = await _read(File(p.join(entity.path, recordFile)));
-      if (record == null) {
+      final file = File(p.join(entity.path, recordFile));
+      if (!await file.exists()) {
         await _deleteQuietly(entity);
-      } else {
-        records.add(record);
+        continue;
       }
+      if (await _read(file) case final record?) records.add(record);
     }
     return records;
   }
@@ -74,8 +76,13 @@ class JsonRecordStore implements RecordStore {
   @override
   Future<void> save(DownloadRecord record) {
     final id = record.id;
+    // After the previous write whatever its outcome: a failed one (a full
+    // disk for a moment) is its caller's to report, and must not take the
+    // newer record down with it.
     final previous = _writes[id] ?? Future<void>.value();
-    final write = previous.then((_) => _write(record));
+    final write = previous
+        .then((_) {}, onError: (Object _) {})
+        .then((_) => _write(record));
     _writes[id] = write;
     return write.whenComplete(() {
       if (_writes[id] == write) _writes.remove(id);

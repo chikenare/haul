@@ -4,6 +4,7 @@ library;
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:offline_engine/src/engine/extension_points.dart';
@@ -41,6 +42,18 @@ class FakeTransferClient extends TransferClient {
   /// When set, the next [enqueueAll] answers `false` for every task.
   bool refuseNext = false;
 
+  /// When set, the `canceled` updates of [cancelTasksWithIds] wait in
+  /// [heldCancels] until [releaseCancels]: the plugin reports them later,
+  /// not inside the call, and the engine may have moved on by then.
+  bool holdCancels = false;
+  final heldCancels = <TaskStatusUpdate>[];
+
+  void releaseCancels() {
+    final held = [...heldCancels];
+    heldCancels.clear();
+    held.forEach(emit);
+  }
+
   File fileOf(DownloadTask task) =>
       File(p.join(appSupport.path, task.directory, task.filename));
 
@@ -53,18 +66,28 @@ class FakeTransferClient extends TransferClient {
   Future<void> complete(DownloadTask task, {int? bytes}) async {
     final file = fileOf(task);
     await file.parent.create(recursive: true);
-    await file.writeAsBytes(List.filled(bytes ?? _rangeSize(task) ?? 10, 0));
+    // Bytes, not a `List<int>`: a 16 MB range as a list of ints is 128 MB.
+    await file.writeAsBytes(Uint8List(bytes ?? _rangeSize(task) ?? 10));
     inFlight.remove(task.taskId);
     emit(TaskStatusUpdate(task, TaskStatus.complete));
   }
 
   /// Completes everything in flight, in order, including what gets
-  /// enqueued meanwhile.
-  Future<void> completeAll() async {
-    while (inFlight.isNotEmpty) {
-      await complete(inFlight.values.first);
-      // Lets the engine refill its window.
-      await Future<void>.delayed(Duration.zero);
+  /// enqueued meanwhile: it only returns once nothing new has come for
+  /// [idle]. The engine refills its window after reading the finished
+  /// piece from disk, which takes longer than a microtask.
+  Future<void> completeAll({
+    Duration idle = const Duration(milliseconds: 50),
+  }) async {
+    var quietSince = DateTime.now();
+    while (true) {
+      if (inFlight.isNotEmpty) {
+        await complete(inFlight.values.first);
+        quietSince = DateTime.now();
+      } else if (DateTime.now().difference(quietSince) >= idle) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 1));
     }
   }
 
@@ -131,7 +154,9 @@ class FakeTransferClient extends TransferClient {
     for (final id in taskIds) {
       final task = inFlight.remove(id);
       alive.removeWhere((t) => t.taskId == id);
-      if (task != null) emit(TaskStatusUpdate(task, TaskStatus.canceled));
+      if (task == null) continue;
+      final update = TaskStatusUpdate(task, TaskStatus.canceled);
+      holdCancels ? heldCancels.add(update) : emit(update);
     }
   }
 

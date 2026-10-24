@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:offline_engine/src/engine/model.dart';
@@ -32,12 +33,13 @@ abstract final class DownloadErrorCode {
   static const unknown = 'unknown';
 }
 
-/// The device is out of room: errno 28 (ENOSPC), 112 on Windows, or the
-/// words the platforms put it in when the errno is lost on the way.
+/// The device is out of room: errno 28 (ENOSPC), 112 or 39 on Windows
+/// (`ERROR_DISK_FULL`, `ERROR_HANDLE_DISK_FULL`), or the words the
+/// platforms put it in when the errno is lost on the way.
 bool isOutOfSpace(Object error) {
   if (error is FileSystemException) {
     final code = error.osError?.errorCode;
-    if (code == 28 || code == 112) return true;
+    if (code == 28 || code == 112 || code == 39) return true;
   }
   final text = '$error'.toLowerCase();
   return text.contains('no space left') ||
@@ -74,6 +76,13 @@ DownloadError downloadErrorOf(Object error) {
         null => const DownloadError(code: DownloadErrorCode.unknown),
       },
     };
+  }
+  // What an app's refresher, or anything else talking to a server, throws
+  // without going through `SourceFetcher`: a network failure all the same.
+  if (error is SocketException ||
+      error is HttpException ||
+      error is TimeoutException) {
+    return const DownloadError(code: DownloadErrorCode.network);
   }
   return const DownloadError(code: DownloadErrorCode.unknown);
 }

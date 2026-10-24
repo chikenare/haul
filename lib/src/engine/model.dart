@@ -46,11 +46,16 @@ sealed class TrackChoice {
         'criteria' => CriteriaChoice(
           TrackCriteria.fromJson(json['criteria']! as Map<String, Object?>),
         ),
+        // Without a fallback, the default one: a record that cannot be read
+        // is dropped with its folder (see `JsonRecordStore.loadAll`).
         'selection' => SelectionChoice(
           SourceSelection.fromJson(json['selection']! as Map<String, Object?>),
-          fallback: TrackCriteria.fromJson(
-            json['fallback']! as Map<String, Object?>,
-          ),
+          fallback: switch (json['fallback']) {
+            final Map<String, Object?> fallback => TrackCriteria.fromJson(
+              fallback,
+            ),
+            _ => const TrackCriteria(),
+          },
         ),
         _ => const PolicyChoice(),
       };

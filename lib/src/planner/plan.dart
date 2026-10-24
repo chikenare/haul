@@ -70,6 +70,11 @@ abstract class DownloadPlan with _$DownloadPlan {
   /// same tracks, from the same source ids, with the same pieces — so what
   /// this plan already has on disk counts for [other]. Only the URLs may
   /// differ: a fresh mint signs them again.
+  ///
+  /// Ranges of a file whose ETag changed are of another file, even at the
+  /// same size: joined with the new ones they would splice two files, and
+  /// the size check at assembly would not catch it. Without an ETag on
+  /// either side there is nothing to compare, and the size has to do.
   bool linesUpWith(DownloadPlan other) {
     if (tracks.length != other.tracks.length) return false;
     for (final (i, track) in tracks.indexed) {
@@ -77,6 +82,11 @@ abstract class DownloadPlan with _$DownloadPlan {
       if (track.kind != theirs.kind ||
           track.sourceId != theirs.sourceId ||
           track.pieces.length != theirs.pieces.length) {
+        return false;
+      }
+      if (track.ifRange != null &&
+          theirs.ifRange != null &&
+          track.ifRange != theirs.ifRange) {
         return false;
       }
       for (final (j, piece) in track.pieces.indexed) {

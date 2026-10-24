@@ -34,6 +34,7 @@ class EngineConfig {
     this.progressInterval = const Duration(milliseconds: 500),
     this.linkMargin = const Duration(minutes: 30),
     this.foregroundAboveMb,
+    this.refreshTimeout = const Duration(minutes: 1),
   });
 
   /// Inside application support: one folder per download.
@@ -62,6 +63,10 @@ class EngineConfig {
   /// On Android, whole files bigger than this run in the foreground, which
   /// needs a notification on their task (see `EngineHooks.onWholeFileTask`).
   final int? foregroundAboveMb;
+
+  /// How long the app's `SourceRefresher` may take before the download
+  /// fails as a network error.
+  final Duration refreshTimeout;
 }
 
 /// Offline downloads end to end: reads each title's source, picks its
@@ -181,16 +186,20 @@ class DownloadEngine {
     unawaited(_pump());
   }
 
+  /// Starts the engine if the app has not: every public call works on a
+  /// loaded engine.
   Future<void> _whenReady() async {
     try {
-      await _ready;
+      await init();
     } on Object {
       // Reported by whoever started init.
     }
   }
 
-  /// Stops reporting. Tasks keep running in the platform; the next engine
-  /// picks them up.
+  /// Stops reporting and acting: work in progress (a source being read, a
+  /// batch being enqueued) goes no further and writes no record, so it
+  /// cannot race the next engine on the same folder. Tasks keep running in
+  /// the platform; the next engine picks them up.
   Future<void> dispose() async {
     _disposed = true;
     _jobs.clear();
@@ -254,7 +263,18 @@ class DownloadEngine {
   /// Puts [request] in the queue. A key already offline or on its way stays
   /// as it is; one that failed starts again with the new source, keeping
   /// the pieces on disk when they still line up.
-  Future<EnqueueResult> enqueue(DownloadRequest request) async {
+  Future<EnqueueResult> enqueue(DownloadRequest request) {
+    final result = _enqueuing.then((_) => _enqueue(request));
+    _enqueuing = result.then<void>((_) {}, onError: (Object _) {});
+    return result;
+  }
+
+  /// Enqueues run one after another: one with a ready plan writes it before
+  /// its record exists, and a second for the same key meanwhile would not
+  /// find the first and make another record.
+  Future<void> _enqueuing = Future.value();
+
+  Future<EnqueueResult> _enqueue(DownloadRequest request) async {
     await _whenReady();
     final now = DateTime.now();
     final existing = byKey(request.key);
@@ -451,6 +471,18 @@ class DownloadEngine {
       return;
     }
 
+    // A file merged and not handed to the sink yet — a failed publish, or
+    // a kill in between — only needs publishing: its pieces went when it
+    // was written, so planning would fetch them all again.
+    if (await _hasStagedFile(id)) {
+      if (_transition(id, const {
+        DownloadStatus.resolving,
+      }, DownloadStatus.downloading)) {
+        await _assemble(id);
+      }
+      return;
+    }
+
     final plan = await _planFor(id);
     if (plan == null || _records[id]?.status != DownloadStatus.resolving) {
       return;
@@ -525,6 +557,17 @@ class DownloadEngine {
     await _settleFinishedPieces(job);
   }
 
+  /// Whether [id] has its one file written (see `DownloadRecord.stagedPath`)
+  /// and the plan it was written from, which says its extension.
+  Future<bool> _hasStagedFile(String id) async {
+    final staged = _records[id]?.stagedPath;
+    if (staged == null || !staged.startsWith(_workPrefix)) return false;
+    final file = File(
+      p.join(_workDir(id).path, staged.substring(_workPrefix.length)),
+    );
+    return await file.exists() && await _readPlan(id) != null;
+  }
+
   /// The plan on disk, or a new one. A plan whose link ran out is planned
   /// again from a fresh link with the same choice, keeping the pieces on
   /// disk when they are the same files; otherwise it starts over.
@@ -543,7 +586,11 @@ class DownloadEngine {
     var source = record.source;
     final refresher = _refresher;
     if (expired && refresher != null) {
-      final fresh = await refresher.refresh(record);
+      // An app's refresher has no timeout of its own, and the queue waits
+      // for this title: one that never answers would hold up every other.
+      final fresh = await refresher
+          .refresh(record)
+          .timeout(config.refreshTimeout);
       final current = _records[id];
       if (current?.status != DownloadStatus.resolving) return null;
       _put(
@@ -566,16 +613,24 @@ class DownloadEngine {
       final same = resolved.selectionOf(saved);
       if (same != null) {
         final replanned = await resolved.plan(same);
+        // Planning an HLS reads its media playlists: a delete meanwhile
+        // must not get its folder back from the plan being written.
+        if (_records[id]?.status != DownloadStatus.resolving) return null;
         if (replanned.linesUpWith(saved)) {
           await _writePlan(id, replanned);
           return replanned;
         }
       }
+      if (_records[id]?.status != DownloadStatus.resolving) return null;
       // Another encode or another choice: the pieces on disk are not these.
       await _wipePieces(id);
     }
 
-    final plan = await resolved.plan(await _selectionFor(record, resolved));
+    // The record as it is now: a refresh may have changed its metadata,
+    // which is what a `CriteriaProvider` decides by.
+    final current = _records[id];
+    if (current?.status != DownloadStatus.resolving) return null;
+    final plan = await resolved.plan(await _selectionFor(current!, resolved));
     if (_records[id]?.status != DownloadStatus.resolving) return null;
     await _writePlan(id, plan);
     return plan;
@@ -719,6 +774,10 @@ class DownloadEngine {
     if (update.status == TaskStatus.canceled && _ownCancels.remove(taskId)) {
       return;
     }
+    // A task that finished before the engine's cancel reached it never
+    // reports `canceled`: its entry would linger and swallow a later,
+    // real cancel of the same piece.
+    if (update.status.isFinalState) _ownCancels.remove(taskId);
 
     // Not followed (paused, deleted, finished, or a replay of a piece the
     // disk already counts). A piece still running for a download that is
@@ -740,12 +799,23 @@ class DownloadEngine {
           File(p.join(_trackDir(job.id, piece.t).path, piece.planned.file)),
         );
       // Cancelled by someone else (a notification button, the system): the
-      // download would wait for it forever, so it is asked for again.
+      // download would wait for it forever, so it is asked for again — only
+      // when it was handed over: one still waiting for room (a late report
+      // from an earlier run) is the feeder's to enqueue, and enqueuing it
+      // here too would fetch it twice. Rebuilt from the plan rather than
+      // taken from the update, which may carry the links of before a
+      // refresh.
       case TaskStatus.canceled:
-        if (update.task case final DownloadTask task) {
-          await _transfer.enqueueAll([task]);
+        final record = _records[job.id];
+        if (record != null && job.inFlight.contains(taskId)) {
+          await _transfer.enqueueAll([_taskFor(record, job.pieces[taskId]!)]);
         }
       case TaskStatus.failed || TaskStatus.notFound:
+        // Over already: cancelling it with the rest would leave an own
+        // cancel whose update never comes, and that would swallow a real
+        // one of the same task after a retry.
+        job.inFlight.remove(taskId);
+        job.pending.remove(taskId);
         await _stopJob(job.id);
         final status =
             update.responseStatusCode ??
@@ -949,12 +1019,16 @@ class DownloadEngine {
                 if (input.kind == TrackKind.subtitle) input,
             ]
           : const <MuxInput>[];
-      await _keepOnly(work, staged, sidecars);
       final current = _records[id];
       if (current == null) return;
+      // Saved before the pieces go: a kill in between must find the file
+      // to publish, not a download with nothing left to assemble.
       _put(
         current.copyWith(stagedPath: '${_workPrefix}output.${plan.extension}'),
+        persist: false,
       );
+      await _store.save(_records[id]!);
+      await _keepOnly(work, staged, sidecars);
     }
 
     final String locator;
@@ -968,16 +1042,18 @@ class DownloadEngine {
     } on Object catch (e) {
       throw _PublishException(e);
     }
-    final size = await _sizeOfLocator(locator) ?? 0;
+    final size = await _sizeOfLocator(id, locator) ?? 0;
     if (!_finish(id, locator: locator, kind: OutputKind.file, bytes: size)) {
       // Deleted while it was being written: nothing points at it any more.
       await _sink.remove(locator);
     }
   }
 
-  Future<int?> _sizeOfLocator(String locator) async {
+  /// A `work:` locator (the private sink's) is measured too: otherwise a
+  /// file kept in the app's folder would finish weighing 0 bytes.
+  Future<int?> _sizeOfLocator(String id, String locator) async {
     final path = locator.startsWith(_workPrefix)
-        ? null
+        ? p.join(_workDir(id).path, locator.substring(_workPrefix.length))
         : (p.isAbsolute(locator) ? locator : null);
     return path == null ? null : _sizeOf(File(path));
   }
@@ -1074,6 +1150,7 @@ class DownloadEngine {
     DownloadStatus to, {
     DownloadRecord Function(DownloadRecord record)? also,
   }) {
+    if (_disposed) return false;
     final record = _records[id];
     if (record == null || !from.contains(record.status)) return false;
     var next = record.copyWith(status: to);
@@ -1101,6 +1178,8 @@ class DownloadEngine {
   }
 
   void _put(DownloadRecord record, {bool persist = true}) {
+    // See [dispose].
+    if (_disposed) return;
     final next = record.copyWith(updatedAt: DateTime.now());
     _records[next.id] = next;
     if (persist) {
