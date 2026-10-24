@@ -1,7 +1,7 @@
 ## 0.1.0
 
-- First release of `offline_engine`, which absorbs `media_planner` as its
-  planner (`package:offline_engine/planner.dart`).
+- First release of `haul`, which absorbs `media_planner` as its
+  planner (`package:haul/planner.dart`).
 - Planner: HLS, DASH and plain-file sources detected by content, track
   selection by BCP-47 language, download plans, local HLS packages and MKV
   arguments; re-planning a fresh link with the same choice
@@ -15,4 +15,4 @@
   `OutputSink`, records as one atomic `record.json` per download folder.
 - Extension points: `SourceRefresher`, `CriteriaProvider`, `OutputSink`
   (`PrivateSink`, `DirectorySink`), `FfmpegRunner`, `EngineHooks`,
-  `EngineLogger`; test fakes in `package:offline_engine/testing.dart`.
+  `EngineLogger`; test fakes in `package:haul/testing.dart`.

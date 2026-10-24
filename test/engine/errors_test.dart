@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/offline_engine.dart';
+import 'package:haul/haul.dart';
 
 void main() {
   group('isOutOfSpace', () {

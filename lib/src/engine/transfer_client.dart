@@ -43,7 +43,7 @@ abstract class TransferClient {
 /// updates never mix with the app's own use of the plugin — the app keeps
 /// `FileDownloader().updates` to itself.
 class PluginTransferClient extends TransferClient {
-  PluginTransferClient({this.namespace = 'offline_engine'});
+  PluginTransferClient({this.namespace = 'haul'});
 
   final String namespace;
 

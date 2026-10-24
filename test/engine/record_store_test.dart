@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/offline_engine.dart';
+import 'package:haul/haul.dart';
 import 'package:path/path.dart' as p;
 
 DownloadRecord _record(String id, {String title = 'Movie'}) => DownloadRecord(

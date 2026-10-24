@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/offline_engine.dart';
+import 'package:haul/haul.dart';
 import 'package:path/path.dart' as p;
 
 import 'engine_test_support.dart';
@@ -266,7 +266,7 @@ void main() {
       // Of the first run, with the old link.
       taskId: 'ode-$id-1-0-2',
       url: '$cdn/v720/2.m4s?t=first',
-      directory: p.join('offline_engine', id, 't0'),
+      directory: p.join('haul', id, 't0'),
     );
     env.transfer.inFlight[stale.taskId] = stale;
 

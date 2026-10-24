@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/planner.dart';
+import 'package:haul/planner.dart';
 
 /// Responde desde un mapa de URL → (cabeceras, cuerpo) y anota las peticiones.
 class _FakeFetcher extends SourceFetcher {

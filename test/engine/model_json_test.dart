@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/offline_engine.dart';
+import 'package:haul/haul.dart';
 
 /// Through text, as `record.json` does: nested values come back as plain
 /// maps and lists, not as the objects that went in.

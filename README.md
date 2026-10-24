@@ -1,15 +1,15 @@
-# offline_engine
+# haul
 
 Offline downloads of HLS, DASH and plain-file video for Flutter apps. Two
 layers in one package:
 
-- **Planner** (`package:offline_engine/planner.dart`, pure Dart) — reads a
+- **Planner** (`package:haul/planner.dart`, pure Dart) — reads a
   source, tells HLS, DASH and plain files apart by content (never the URL),
   picks quality and tracks by BCP-47 language, and writes a `DownloadPlan`:
   every piece to fetch with its local name. It also assembles what was
   fetched: a local HLS package the player opens as is (DASH fMP4 included),
   or the inputs and arguments for an ffmpeg stream-copy into MKV.
-- **Engine** (`package:offline_engine/offline_engine.dart`, which also
+- **Engine** (`package:haul/haul.dart`, which also
   exports the planner) — the queue on top: one `DownloadRecord` per title,
   every piece fetched through `background_downloader`, progress,
   pause/resume/retry, fresh links when one runs out, and the finished package
@@ -29,7 +29,7 @@ takes:
 | `EngineHooks` | `onWholeFileTask`: dress the task of a file fetched in one request (a notification, which on Android keeps a long one in the foreground). |
 | `EngineLogger` | Warnings and unexpected errors, for the app's crash reporting. `PrintLogger` by default. |
 
-`package:offline_engine/testing.dart` has fakes (`FakeTransferClient` and
+`package:haul/testing.dart` has fakes (`FakeTransferClient` and
 friends) for driving the engine in tests without platform channels, network
 or ffmpeg.
 
@@ -93,7 +93,7 @@ or ffmpeg.
 ## Usage
 
 ```dart
-import 'package:offline_engine/offline_engine.dart';
+import 'package:haul/haul.dart';
 
 final engine = DownloadEngine(
   refresher: MyRefresher(), // implements SourceRefresher
@@ -144,7 +144,7 @@ plan: plan)`.
 ### The planner alone
 
 ```dart
-import 'package:offline_engine/planner.dart';
+import 'package:haul/planner.dart';
 
 final source = await const SourceResolver().resolve(
   SourceRequest(url: manifestUrl),

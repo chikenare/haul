@@ -1,6 +1,6 @@
 import 'dart:math';
 
-import 'package:offline_engine/src/planner/plan.dart';
+import 'package:haul/src/planner/plan.dart';
 
 /// An MP4 DASH track as an HLS media playlist: its fragments as they are,
 /// with the init as `EXT-X-MAP`. The player (local package) and ffmpeg (when

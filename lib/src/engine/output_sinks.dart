@@ -1,8 +1,8 @@
 import 'dart:io';
 
+import 'package:haul/src/engine/extension_points.dart';
+import 'package:haul/src/engine/model.dart';
 import 'package:meta/meta.dart';
-import 'package:offline_engine/src/engine/extension_points.dart';
-import 'package:offline_engine/src/engine/model.dart';
 import 'package:path/path.dart' as p;
 
 /// Leaves the file in the download's own folder, where only the app sees

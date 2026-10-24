@@ -6,29 +6,29 @@ import 'dart:math';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
-import 'package:offline_engine/src/engine/errors.dart';
-import 'package:offline_engine/src/engine/extension_points.dart';
-import 'package:offline_engine/src/engine/model.dart';
-import 'package:offline_engine/src/engine/output_sinks.dart';
-import 'package:offline_engine/src/engine/record_store.dart';
-import 'package:offline_engine/src/engine/transfer_client.dart';
-import 'package:offline_engine/src/planner/assembly/local_packager.dart';
-import 'package:offline_engine/src/planner/assembly/mkv_args.dart';
-import 'package:offline_engine/src/planner/assembly/mux_input.dart';
-import 'package:offline_engine/src/planner/assembly/track_assembler.dart';
-import 'package:offline_engine/src/planner/errors.dart';
-import 'package:offline_engine/src/planner/media_options.dart';
-import 'package:offline_engine/src/planner/plan.dart';
-import 'package:offline_engine/src/planner/sources/resolved_source.dart';
-import 'package:offline_engine/src/planner/sources/source_resolver.dart';
-import 'package:offline_engine/src/planner/track_criteria.dart';
+import 'package:haul/src/engine/errors.dart';
+import 'package:haul/src/engine/extension_points.dart';
+import 'package:haul/src/engine/model.dart';
+import 'package:haul/src/engine/output_sinks.dart';
+import 'package:haul/src/engine/record_store.dart';
+import 'package:haul/src/engine/transfer_client.dart';
+import 'package:haul/src/planner/assembly/local_packager.dart';
+import 'package:haul/src/planner/assembly/mkv_args.dart';
+import 'package:haul/src/planner/assembly/mux_input.dart';
+import 'package:haul/src/planner/assembly/track_assembler.dart';
+import 'package:haul/src/planner/errors.dart';
+import 'package:haul/src/planner/media_options.dart';
+import 'package:haul/src/planner/plan.dart';
+import 'package:haul/src/planner/sources/resolved_source.dart';
+import 'package:haul/src/planner/sources/source_resolver.dart';
+import 'package:haul/src/planner/track_criteria.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 /// Tuning, with defaults that suit every platform.
 class EngineConfig {
   const EngineConfig({
-    this.rootFolder = 'offline_engine',
+    this.rootFolder = 'haul',
     this.maxConcurrent = 8,
     this.window,
     this.retries = 3,

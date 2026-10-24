@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:offline_engine/src/planner/assembly/mux_input.dart';
-import 'package:offline_engine/src/planner/assembly/segment_playlist.dart';
-import 'package:offline_engine/src/planner/assembly/track_assembler.dart';
-import 'package:offline_engine/src/planner/plan.dart';
+import 'package:haul/src/planner/assembly/mux_input.dart';
+import 'package:haul/src/planner/assembly/segment_playlist.dart';
+import 'package:haul/src/planner/assembly/track_assembler.dart';
+import 'package:haul/src/planner/plan.dart';
 import 'package:path/path.dart' as p;
 
 /// A download saved without merging, ready to play.

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/planner.dart';
+import 'package:haul/planner.dart';
 
 /// Los manifiestos casi nunca traen URLs completas: se resuelven contra la
 /// URL del propio manifiesto (la final, tras redirecciones).

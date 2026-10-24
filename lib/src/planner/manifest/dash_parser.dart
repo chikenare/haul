@@ -1,6 +1,6 @@
 import 'dart:math';
 
-import 'package:offline_engine/src/planner/errors.dart';
+import 'package:haul/src/planner/errors.dart';
 import 'package:xml/xml.dart';
 
 /// Reads a DASH MPD for downloading: every representation with the list of

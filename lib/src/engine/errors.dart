@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:offline_engine/src/engine/model.dart';
-import 'package:offline_engine/src/planner/errors.dart';
+import 'package:haul/src/engine/model.dart';
+import 'package:haul/src/planner/errors.dart';
 
 /// The codes a failed download carries, besides the app's own (from a
 /// `RefreshException`).

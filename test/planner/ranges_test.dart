@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/planner.dart';
+import 'package:haul/planner.dart';
 import 'package:path/path.dart' as p;
 
 const _mb16 = 16 * 1024 * 1024;

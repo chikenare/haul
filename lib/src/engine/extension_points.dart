@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
-import 'package:offline_engine/src/engine/model.dart';
-import 'package:offline_engine/src/planner/sources/source_request.dart';
-import 'package:offline_engine/src/planner/track_criteria.dart';
+import 'package:haul/src/engine/model.dart';
+import 'package:haul/src/planner/sources/source_request.dart';
+import 'package:haul/src/planner/track_criteria.dart';
 
 /// A fresh link for a download whose link ran out or was refused: the app
 /// mints it again, resolves its host again, or has nothing to offer.
@@ -117,16 +117,14 @@ class PrintLogger implements EngineLogger {
   const PrintLogger();
 
   @override
-  void warn(String message) => debugPrint('[offline_engine] $message');
+  void warn(String message) => debugPrint('[haul] $message');
 
   @override
   void error(
     Object error,
     StackTrace? stackTrace, {
     Map<String, Object?>? context,
-  }) => debugPrint(
-    '[offline_engine] $error ${context ?? ''}\n${stackTrace ?? ''}',
-  );
+  }) => debugPrint('[haul] $error ${context ?? ''}\n${stackTrace ?? ''}');
 }
 
 /// Optional hooks into the engine's work.

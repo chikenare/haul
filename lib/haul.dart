@@ -2,7 +2,7 @@
 /// planner it is built on. See the README for what each app plugs in.
 library;
 
-export 'package:offline_engine/planner.dart';
+export 'package:haul/planner.dart';
 export 'src/engine/download_engine.dart' show DownloadEngine, EngineConfig;
 export 'src/engine/errors.dart';
 export 'src/engine/extension_points.dart';

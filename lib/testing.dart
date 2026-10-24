@@ -7,10 +7,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:background_downloader/background_downloader.dart';
-import 'package:offline_engine/src/engine/extension_points.dart';
-import 'package:offline_engine/src/engine/transfer_client.dart';
-import 'package:offline_engine/src/planner/errors.dart';
-import 'package:offline_engine/src/planner/sources/source_fetcher.dart';
+import 'package:haul/src/engine/extension_points.dart';
+import 'package:haul/src/engine/transfer_client.dart';
+import 'package:haul/src/planner/errors.dart';
+import 'package:haul/src/planner/sources/source_fetcher.dart';
 import 'package:path/path.dart' as p;
 
 /// In-memory stand-in for background_downloader, as it behaves: a

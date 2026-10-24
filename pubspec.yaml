@@ -1,4 +1,4 @@
-name: offline_engine
+name: haul
 description: >-
   Offline downloads of HLS, DASH and plain-file video for Flutter apps:
   reads the source, picks its tracks, fetches every piece through

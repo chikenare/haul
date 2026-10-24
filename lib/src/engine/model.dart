@@ -1,8 +1,8 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:offline_engine/src/planner/media_options.dart';
-import 'package:offline_engine/src/planner/plan.dart';
-import 'package:offline_engine/src/planner/sources/source_request.dart';
-import 'package:offline_engine/src/planner/track_criteria.dart';
+import 'package:haul/src/planner/media_options.dart';
+import 'package:haul/src/planner/plan.dart';
+import 'package:haul/src/planner/sources/source_request.dart';
+import 'package:haul/src/planner/track_criteria.dart';
 
 part 'model.freezed.dart';
 part 'model.g.dart';

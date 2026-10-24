@@ -1,14 +1,14 @@
 import 'dart:convert';
 
-import 'package:offline_engine/src/planner/errors.dart';
-import 'package:offline_engine/src/planner/manifest/dash_parser.dart';
-import 'package:offline_engine/src/planner/plan.dart';
-import 'package:offline_engine/src/planner/sources/dash_source.dart';
-import 'package:offline_engine/src/planner/sources/file_source.dart';
-import 'package:offline_engine/src/planner/sources/hls_source.dart';
-import 'package:offline_engine/src/planner/sources/resolved_source.dart';
-import 'package:offline_engine/src/planner/sources/source_fetcher.dart';
-import 'package:offline_engine/src/planner/sources/source_request.dart';
+import 'package:haul/src/planner/errors.dart';
+import 'package:haul/src/planner/manifest/dash_parser.dart';
+import 'package:haul/src/planner/plan.dart';
+import 'package:haul/src/planner/sources/dash_source.dart';
+import 'package:haul/src/planner/sources/file_source.dart';
+import 'package:haul/src/planner/sources/hls_source.dart';
+import 'package:haul/src/planner/sources/resolved_source.dart';
+import 'package:haul/src/planner/sources/source_fetcher.dart';
+import 'package:haul/src/planner/sources/source_request.dart';
 
 /// Works out what a source is and leaves it ready to pick what to fetch.
 ///

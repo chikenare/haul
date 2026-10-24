@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:offline_engine/src/engine/model.dart';
+import 'package:haul/src/engine/model.dart';
 import 'package:path/path.dart' as p;
 
 /// Where records live between runs. The engine holds them all in memory and

@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/offline_engine.dart';
+import 'package:haul/haul.dart';
 import 'package:path/path.dart' as p;
 
 import 'engine_test_support.dart';

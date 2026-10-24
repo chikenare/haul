@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/planner.dart';
+import 'package:haul/planner.dart';
 
 void main() {
   final base = Uri.parse('https://cdn.example.com/show/master.m3u8?token=abc');

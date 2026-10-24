@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/planner.dart';
+import 'package:haul/planner.dart';
 
 /// Una fuente con calidades y pistas fijas, para probar qué se marca.
 class _Source extends ResolvedSource {

@@ -1,4 +1,4 @@
-import 'package:offline_engine/src/planner/plan.dart';
+import 'package:haul/src/planner/plan.dart';
 
 /// A track ready for ffmpeg.
 class MuxInput {

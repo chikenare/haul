@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/offline_engine.dart';
-import 'package:offline_engine/testing.dart';
+import 'package:haul/haul.dart';
+import 'package:haul/testing.dart';
 import 'package:path/path.dart' as p;
 
 import 'engine_test_support.dart';
@@ -26,7 +26,7 @@ void main() {
       // two fragments): the account's languages picked them.
       expect(
         {for (final t in env.transfer.enqueued) t.directory},
-        {'offline_engine/$id/t0', 'offline_engine/$id/t1'},
+        {'haul/$id/t0', 'haul/$id/t1'},
       );
       expect(
         env.transfer.enqueued.map((t) => t.url),

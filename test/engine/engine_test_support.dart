@@ -1,5 +1,5 @@
 // Shared fixtures for the engine tests: a temp application-support folder,
-// the fakes of `package:offline_engine/testing.dart`, small DASH / HLS /
+// the fakes of `package:haul/testing.dart`, small DASH / HLS /
 // plain-file sources, and polling helpers. The engine runs for real against
 // them — only the platform edges (plugin, network, ffmpeg) are stubbed.
 
@@ -9,8 +9,8 @@ import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_engine/offline_engine.dart';
-import 'package:offline_engine/testing.dart';
+import 'package:haul/haul.dart';
+import 'package:haul/testing.dart';
 import 'package:path/path.dart' as p;
 
 const cdn = 'https://cdn.example/vid-1';
@@ -197,7 +197,7 @@ class Env {
     return engine;
   }
 
-  String work(String id) => p.join(dir.path, 'offline_engine', id);
+  String work(String id) => p.join(dir.path, 'haul', id);
 
   File planFile(String id) => File(p.join(work(id), 'plan.json'));
 
