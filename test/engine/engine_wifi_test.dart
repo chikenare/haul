@@ -206,4 +206,18 @@ void main() {
       expect(env.transfer.enqueued, isEmpty);
     },
   );
+
+  test('watchWaitingForWifi says when it changes, once each', () async {
+    final engine = await wifiEngine();
+    final seen = <bool>[];
+    final sub = engine.watchWaitingForWifi().listen(seen.add);
+    addTearDown(sub.cancel);
+    await settle();
+
+    wifi.set(false);
+    await settle();
+    wifi.set(true);
+    await settle();
+    expect(seen, [false, true, false]);
+  });
 }

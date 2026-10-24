@@ -216,8 +216,10 @@ class DownloadEngine {
     _store = _storeOverride ?? JsonRecordStore(() async => _root);
 
     _records.clear();
+    _snapshot = null;
     for (final record in await _store.loadAll()) {
       _records[record.id] = record;
+      _snapshot = null;
     }
 
     await _transfer.configure(
@@ -287,10 +289,16 @@ class DownloadEngine {
   // ---------------------------------------------------------------------
   // Reading
 
-  /// Newest first.
-  List<DownloadRecord> get records =>
-      _records.values.toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  /// Newest first. One list per change, shared by every caller and every
+  /// [watchAll] listener — not a copy and a sort each, twice a second per
+  /// download in progress.
+  List<DownloadRecord> get records => _snapshot ??= List.unmodifiable(
+    _records.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
+  );
+
+  /// [records], until the next change to [_records].
+  List<DownloadRecord>? _snapshot;
 
   DownloadRecord? byId(String id) => _records[id];
 
@@ -329,6 +337,10 @@ class DownloadEngine {
   /// One record now and after every change, until it is deleted (null).
   Stream<DownloadRecord?> watch(String id) =>
       watchAll().map((_) => _records[id]).distinct();
+
+  /// [waitingForWifi] now and whenever it changes.
+  Stream<bool> watchWaitingForWifi() =>
+      watchAll().map((_) => waitingForWifi).distinct();
 
   /// Where a finished download is on disk: its master playlist or its file.
   /// Null before it is done, or when the sink's locator is not a path.
@@ -493,6 +505,7 @@ class DownloadEngine {
   Future<void> delete(String id, {bool keepOutput = false}) async {
     await _whenReady();
     final record = _records.remove(id);
+    _snapshot = null;
     if (record == null) return;
     _emit();
     await _stopJob(id);
@@ -1653,6 +1666,7 @@ class DownloadEngine {
     if (_disposed) return;
     final next = record.copyWith(updatedAt: DateTime.now());
     _records[next.id] = next;
+    _snapshot = null;
     if (persist) {
       unawaited(
         _store

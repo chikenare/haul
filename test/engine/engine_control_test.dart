@@ -386,6 +386,20 @@ void main() {
     final record = await waitForStatus(engine, id, DownloadStatus.failed);
     expect(record.error?.code, DownloadErrorCode.unknown);
   });
+
+  test('records is one shared list until something changes', () async {
+    final engine = await env.engine();
+    await engine.enqueue(request());
+    await waitUntil(() => env.transfer.enqueued.length == 6);
+
+    final first = engine.records;
+    expect(identical(engine.records, first), isTrue);
+    expect(() => first.add(first.single), throwsUnsupportedError);
+
+    await engine.pause(first.single.id);
+    expect(identical(engine.records, first), isFalse);
+    expect(engine.records.single.status, DownloadStatus.paused);
+  });
 }
 
 /// Holds the first fetch until [open]; the rest go straight to [inner].
