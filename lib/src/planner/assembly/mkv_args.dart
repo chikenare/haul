@@ -1,6 +1,6 @@
-import 'package:media_planner/src/assembly/mux_input.dart';
-import 'package:media_planner/src/language_codes.dart';
-import 'package:media_planner/src/plan.dart';
+import 'package:offline_engine/src/planner/assembly/mux_input.dart';
+import 'package:offline_engine/src/planner/language_codes.dart';
+import 'package:offline_engine/src/planner/plan.dart';
 import 'package:path/path.dart' as p;
 
 /// The ffmpeg arguments that merge a download's tracks into one MKV without

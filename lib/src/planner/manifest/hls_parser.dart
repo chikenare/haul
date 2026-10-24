@@ -1,4 +1,4 @@
-import 'package:media_planner/src/errors.dart';
+import 'package:offline_engine/src/planner/errors.dart';
 
 /// Reads HLS playlists (RFC 8216) for downloading: what qualities and tracks a
 /// master offers, and what resources a media playlist needs fetched.

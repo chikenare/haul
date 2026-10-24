@@ -1,5 +1,5 @@
-import 'package:media_planner/media_planner.dart';
-import 'package:test/test.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:offline_engine/planner.dart';
 
 void main() {
   final base = Uri.parse('https://cdn.example.com/show/master.m3u8?token=abc');

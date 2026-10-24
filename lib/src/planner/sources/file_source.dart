@@ -1,9 +1,9 @@
-import 'package:media_planner/src/media_options.dart';
-import 'package:media_planner/src/plan.dart';
-import 'package:media_planner/src/sources/resolved_source.dart';
-import 'package:media_planner/src/sources/source_fetcher.dart';
 import 'package:meta/meta.dart';
 import 'package:mime/mime.dart';
+import 'package:offline_engine/src/planner/media_options.dart';
+import 'package:offline_engine/src/planner/plan.dart';
+import 'package:offline_engine/src/planner/sources/resolved_source.dart';
+import 'package:offline_engine/src/planner/sources/source_fetcher.dart';
 import 'package:path/path.dart' as p;
 
 /// A whole file (mp4, mkv, webm…). Fetched as it is; it only goes through

@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:media_planner/media_planner.dart';
-import 'package:test/test.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:offline_engine/planner.dart';
 
 /// A DASH like the ones a signed CDN mints: the token rides the query of
 /// every segment, so a fresh mint changes every URL and nothing else.

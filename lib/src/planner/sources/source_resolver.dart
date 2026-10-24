@@ -1,14 +1,14 @@
 import 'dart:convert';
 
-import 'package:media_planner/src/errors.dart';
-import 'package:media_planner/src/manifest/dash_parser.dart';
-import 'package:media_planner/src/plan.dart';
-import 'package:media_planner/src/sources/dash_source.dart';
-import 'package:media_planner/src/sources/file_source.dart';
-import 'package:media_planner/src/sources/hls_source.dart';
-import 'package:media_planner/src/sources/resolved_source.dart';
-import 'package:media_planner/src/sources/source_fetcher.dart';
-import 'package:media_planner/src/sources/source_request.dart';
+import 'package:offline_engine/src/planner/errors.dart';
+import 'package:offline_engine/src/planner/manifest/dash_parser.dart';
+import 'package:offline_engine/src/planner/plan.dart';
+import 'package:offline_engine/src/planner/sources/dash_source.dart';
+import 'package:offline_engine/src/planner/sources/file_source.dart';
+import 'package:offline_engine/src/planner/sources/hls_source.dart';
+import 'package:offline_engine/src/planner/sources/resolved_source.dart';
+import 'package:offline_engine/src/planner/sources/source_fetcher.dart';
+import 'package:offline_engine/src/planner/sources/source_request.dart';
 
 /// Works out what a source is and leaves it ready to pick what to fetch.
 ///

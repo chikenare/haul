@@ -1,5 +1,5 @@
-import 'package:media_planner/media_planner.dart';
-import 'package:test/test.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:offline_engine/planner.dart';
 
 void main() {
   final manifestUri = Uri.parse(

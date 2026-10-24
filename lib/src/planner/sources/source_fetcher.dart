@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:media_planner/src/errors.dart';
+import 'package:offline_engine/src/planner/errors.dart';
 
 /// An HTTP response already read, whole or up to a cap.
 class FetchedResponse {

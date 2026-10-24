@@ -1,8 +1,8 @@
-import 'package:media_planner/src/errors.dart';
-import 'package:media_planner/src/manifest/dash_parser.dart';
-import 'package:media_planner/src/media_options.dart';
-import 'package:media_planner/src/plan.dart';
-import 'package:media_planner/src/sources/resolved_source.dart';
+import 'package:offline_engine/src/planner/errors.dart';
+import 'package:offline_engine/src/planner/manifest/dash_parser.dart';
+import 'package:offline_engine/src/planner/media_options.dart';
+import 'package:offline_engine/src/planner/plan.dart';
+import 'package:offline_engine/src/planner/sources/resolved_source.dart';
 
 /// A DASH without DRM: every picked representation is fetched (init +
 /// fragments) and read as one track when packaged or merged.

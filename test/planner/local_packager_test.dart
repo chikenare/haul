@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:media_planner/media_planner.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:offline_engine/planner.dart';
 import 'package:path/path.dart' as p;
-import 'package:test/test.dart';
 
 void main() {
   PlannedPiece piece(String file, [double? duration]) =>
