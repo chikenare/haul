@@ -159,6 +159,7 @@ await engine.pause(id);
 await engine.resume(id);
 await engine.retry(id); // after a failure
 await engine.delete(id); // its folder and what it published
+await engine.delete(id, keepOutput: true); // off the list, the file stays
 final error = await engine.export(id); // a finished package → one file
 ```
 

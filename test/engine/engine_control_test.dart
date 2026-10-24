@@ -225,6 +225,28 @@ void main() {
       expect(Directory(env.work(id)).existsSync(), isFalse);
     });
 
+    test(
+      'keeping the output takes a finished file off the list only',
+      () async {
+        final out = Directory(p.join(env.dir.path, 'Movies'));
+        final sink = RecordingSink(DirectorySink(() async => out.path));
+        final engine = await env.engine(sink: sink);
+        final (:id, outcome: _) = await engine.enqueue(
+          request(url: fileUrl, output: OutputMode.file),
+        );
+        await waitUntil(() => env.transfer.enqueued.length == 1);
+        await env.transfer.completeAll();
+        final record = await waitForStatus(engine, id, DownloadStatus.done);
+
+        await engine.delete(id, keepOutput: true);
+
+        expect(engine.byId(id), isNull);
+        expect(sink.removed, isEmpty);
+        expect(File(record.outputLocator!).existsSync(), isTrue);
+        expect(Directory(env.work(id)).existsSync(), isFalse);
+      },
+    );
+
     test('of a finished package removes its folder only', () async {
       final sink = RecordingSink(const PrivateSink());
       final engine = await env.engine(sink: sink);

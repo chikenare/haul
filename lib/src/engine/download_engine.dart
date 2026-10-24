@@ -487,8 +487,10 @@ class DownloadEngine {
   }
 
   /// Cancels whatever is in flight and removes the download, its folder and
-  /// what it published.
-  Future<void> delete(String id) async {
+  /// what it published — unless [keepOutput]: a finished file the user keeps
+  /// in their folder, only taken off the list. A package lives in the
+  /// download's folder, so it goes either way.
+  Future<void> delete(String id, {bool keepOutput = false}) async {
     await _whenReady();
     final record = _records.remove(id);
     if (record == null) return;
@@ -498,7 +500,7 @@ class DownloadEngine {
     _completedEarly.removeWhere((t) => _parseTaskId(t)?.id == id);
 
     final locator = record.outputLocator;
-    if (locator != null && !locator.startsWith(_workPrefix)) {
+    if (!keepOutput && locator != null && !locator.startsWith(_workPrefix)) {
       try {
         await _sink.remove(locator);
       } on Object catch (e, st) {
