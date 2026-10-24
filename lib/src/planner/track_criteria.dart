@@ -102,4 +102,16 @@ class TrackCriteria {
 
   @override
   int get hashCode => Object.hash(maxHeight, audio, subtitles);
+
+  factory TrackCriteria.fromJson(Map<String, Object?> json) => TrackCriteria(
+    maxHeight: json['maxHeight'] as int?,
+    audio: TrackPreference.parse(json['audio'] as String?),
+    subtitles: TrackPreference.parse(json['subtitles'] as String?),
+  );
+
+  Map<String, Object?> toJson() => {
+    'maxHeight': maxHeight,
+    'audio': audio.encode(),
+    'subtitles': subtitles.encode(),
+  };
 }

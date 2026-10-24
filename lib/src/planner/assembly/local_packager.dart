@@ -78,7 +78,7 @@ class LocalPackager {
   static bool _playable(PlannedTrack track) => switch (track.assembly) {
     TrackAssembly.hlsPlaylist => true,
     TrackAssembly.concat || TrackAssembly.single => track.hasSegmentPlaylist,
-    TrackAssembly.vttSegments => false,
+    TrackAssembly.vttSegments || TrackAssembly.ranges => false,
   };
 
   /// Writes the playlists into [dir], the download's work folder, with the
@@ -139,17 +139,7 @@ class LocalPackager {
             : null,
       ),
     );
-    await File(p.join(dir.path, _subtitles)).writeAsString(
-      jsonEncode([
-        for (final s in subtitles)
-          {
-            'path': s.path,
-            'label': s.label,
-            'language': s.language,
-            'forced': s.forced,
-          },
-      ]),
-    );
+    await writeSubtitles(dir, subtitles);
 
     return LocalPackage(
       masterPath: master.path,
@@ -157,6 +147,24 @@ class LocalPackager {
       bytes: await _sizeOf(dir),
     );
   }
+
+  /// Lists [subtitles] (paths relative to [dir]) in the `subtitles.json` of
+  /// [dir], what [subtitlesOf] reads — also for sidecars kept beside a
+  /// merged file.
+  static Future<void> writeSubtitles(
+    Directory dir,
+    List<PackagedSubtitle> subtitles,
+  ) => File(p.join(dir.path, _subtitles)).writeAsString(
+    jsonEncode([
+      for (final s in subtitles)
+        {
+          'path': s.path,
+          'label': s.label,
+          'language': s.language,
+          'forced': s.forced,
+        },
+    ]),
+  );
 
   /// The subtitles of the package whose master is [masterPath], with absolute
   /// paths. Empty when there are none or they cannot be read.

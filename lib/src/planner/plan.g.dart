@@ -17,7 +17,7 @@ _DownloadPlan _$DownloadPlanFromJson(Map<String, dynamic> json) =>
 
 Map<String, dynamic> _$DownloadPlanToJson(_DownloadPlan instance) =>
     <String, dynamic>{
-      'tracks': instance.tracks,
+      'tracks': instance.tracks.map((e) => e.toJson()).toList(),
       'extension': instance.extension,
       'expectedBytes': instance.expectedBytes,
     };
@@ -35,19 +35,23 @@ _PlannedTrack _$PlannedTrackFromJson(Map<String, dynamic> json) =>
       forced: json['forced'] as bool? ?? false,
       codecs: json['codecs'] as String?,
       sourceId: json['sourceId'] as String?,
+      ifRange: json['ifRange'] as String?,
+      fileExtension: json['fileExtension'] as String?,
     );
 
 Map<String, dynamic> _$PlannedTrackToJson(_PlannedTrack instance) =>
     <String, dynamic>{
       'kind': _$TrackKindEnumMap[instance.kind]!,
       'assembly': _$TrackAssemblyEnumMap[instance.assembly]!,
-      'pieces': instance.pieces,
+      'pieces': instance.pieces.map((e) => e.toJson()).toList(),
       'playlist': instance.playlist,
       'language': instance.language,
       'label': instance.label,
       'forced': instance.forced,
       'codecs': instance.codecs,
       'sourceId': instance.sourceId,
+      'ifRange': instance.ifRange,
+      'fileExtension': instance.fileExtension,
     };
 
 const _$TrackKindEnumMap = {
@@ -61,6 +65,7 @@ const _$TrackAssemblyEnumMap = {
   TrackAssembly.concat: 'concat',
   TrackAssembly.hlsPlaylist: 'hlsPlaylist',
   TrackAssembly.vttSegments: 'vttSegments',
+  TrackAssembly.ranges: 'ranges',
 };
 
 _PlannedPiece _$PlannedPieceFromJson(Map<String, dynamic> json) =>
@@ -68,6 +73,8 @@ _PlannedPiece _$PlannedPieceFromJson(Map<String, dynamic> json) =>
       url: json['url'] as String,
       file: json['file'] as String,
       duration: (json['duration'] as num?)?.toDouble(),
+      rangeStart: (json['rangeStart'] as num?)?.toInt(),
+      rangeEnd: (json['rangeEnd'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$PlannedPieceToJson(_PlannedPiece instance) =>
@@ -75,4 +82,6 @@ Map<String, dynamic> _$PlannedPieceToJson(_PlannedPiece instance) =>
       'url': instance.url,
       'file': instance.file,
       'duration': instance.duration,
+      'rangeStart': instance.rangeStart,
+      'rangeEnd': instance.rangeEnd,
     };

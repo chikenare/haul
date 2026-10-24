@@ -6,9 +6,10 @@ import 'package:offline_engine/src/planner/sources/resolved_source.dart';
 import 'package:offline_engine/src/planner/sources/source_fetcher.dart';
 import 'package:path/path.dart' as p;
 
-/// A whole file (mp4, mkv, webm…). Fetched as it is; it only goes through
-/// ffmpeg when there are external subtitles to put in, and then it comes out
-/// as MKV.
+/// A whole file (mp4, mkv, webm…). Fetched as it is — in byte ranges when
+/// it is big and the server allows it — and it only goes through ffmpeg
+/// when there are external subtitles to put in, and then it comes out as
+/// MKV.
 class FileSource extends ResolvedSource {
   FileSource(super.request, this.response)
     : extension = _extensionFor(response);
@@ -27,11 +28,33 @@ class FileSource extends ResolvedSource {
   @override
   Future<DownloadPlan> plan(SourceSelection selection) async {
     final subtitles = externalSubtitleTracks(selection);
+    final length = response.contentLength;
+    final ranged = length != null && length > rangeSize && acceptsRanges;
     final video = PlannedTrack(
       kind: TrackKind.video,
-      assembly: TrackAssembly.single,
-      pieces: [PlannedPiece(url: request.url, file: '0.$extension')],
+      assembly: ranged ? TrackAssembly.ranges : TrackAssembly.single,
+      pieces: ranged
+          ? [
+              for (
+                var start = 0, i = 0;
+                start < length;
+                start += rangeSize, i++
+              )
+                PlannedPiece(
+                  url: request.url,
+                  file: '$i.part',
+                  rangeStart: start,
+                  rangeEnd:
+                      (start + rangeSize < length
+                          ? start + rangeSize
+                          : length) -
+                      1,
+                ),
+            ]
+          : [PlannedPiece(url: request.url, file: '0.$extension')],
       sourceId: 'file',
+      ifRange: ranged ? _strongEtag : null,
+      fileExtension: ranged ? extension : null,
     );
 
     return DownloadPlan(
@@ -39,6 +62,23 @@ class FileSource extends ResolvedSource {
       extension: subtitles.isEmpty ? extension : 'mkv',
       expectedBytes: response.contentLength ?? 0,
     );
+  }
+
+  /// The size of each range of a big file: small enough that a pause or a
+  /// kill loses little, big enough that a 4 GB movie stays a few hundred
+  /// requests.
+  static const rangeSize = 16 * 1024 * 1024;
+
+  /// Whether the server said it serves byte ranges. Without it the file
+  /// comes down in one request, which a pause starts over.
+  bool get acceptsRanges =>
+      response.headers['accept-ranges']?.toLowerCase().contains('bytes') ??
+      false;
+
+  /// A weak ETag (`W/"…"`) cannot validate a range.
+  String? get _strongEtag {
+    final etag = response.headers['etag']?.trim();
+    return etag == null || etag.startsWith('W/') ? null : etag;
   }
 
   static const _videoExtensions = {

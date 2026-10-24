@@ -36,6 +36,7 @@ class TrackAssembler {
       TrackAssembly.concat => await _concat(pieces, dir),
       TrackAssembly.hlsPlaylist => await _playlist(track.playlist!, dir),
       TrackAssembly.vttSegments => await _mergeVtt(pieces, dir),
+      TrackAssembly.ranges => await _join(pieces, dir, track),
     };
 
     return MuxInput(
@@ -50,8 +51,14 @@ class TrackAssembler {
 
   /// A DASH init and its fragments one after another: the result is a valid
   /// fragmented MP4 (or WebM).
-  Future<String> _concat(List<File> pieces, Directory dir) async {
-    final out = File(p.join(dir.path, 'track${p.extension(pieces.last.path)}'));
+  Future<String> _concat(
+    List<File> pieces,
+    Directory dir, {
+    String? name,
+  }) async {
+    final out = File(
+      p.join(dir.path, name ?? 'track${p.extension(pieces.last.path)}'),
+    );
     final sink = out.openWrite();
     try {
       for (final piece in pieces) {
@@ -61,6 +68,23 @@ class TrackAssembler {
       await sink.close();
     }
     return out.path;
+  }
+
+  /// The ranges of one file back into it. Each range is checked against
+  /// the size it was asked for: a server that ignored the range, or a file
+  /// that changed in between, would otherwise splice garbage.
+  Future<String> _join(
+    List<File> pieces,
+    Directory dir,
+    PlannedTrack track,
+  ) async {
+    for (final (i, piece) in pieces.indexed) {
+      final expected = track.pieces[i].expectedBytes;
+      if (expected != null && await piece.length() != expected) {
+        throw SourceException(SourceErrorCode.missingPieces, piece.path);
+      }
+    }
+    return _concat(pieces, dir, name: 'track.${track.fileExtension ?? 'bin'}');
   }
 
   Future<String> _playlist(String playlist, Directory dir) async {

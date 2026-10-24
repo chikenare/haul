@@ -23,6 +23,11 @@ enum TrackAssembly {
 
   /// WebVTT fragments of an HLS, merged into one `.vtt`.
   vttSegments,
+
+  /// Byte ranges of one big file, joined back in order. Fetched apart so a
+  /// pause, a kill or a dead link only loses the ranges in flight — the
+  /// downloader's own pause is not reliable on every platform.
+  ranges,
 }
 
 /// What to fetch and how to put it together. Decided once, when the
@@ -49,7 +54,11 @@ abstract class DownloadPlan with _$DownloadPlan {
   /// A plain file with no external subtitles stays as it arrived; anything
   /// else goes through ffmpeg when it is merged.
   bool get needsMux =>
-      tracks.length > 1 || tracks.single.assembly != TrackAssembly.single;
+      tracks.length > 1 ||
+      switch (tracks.single.assembly) {
+        TrackAssembly.single || TrackAssembly.ranges => false,
+        _ => true,
+      };
 
   int get pieceCount => tracks.fold(0, (sum, t) => sum + t.pieces.length);
 
@@ -71,7 +80,12 @@ abstract class DownloadPlan with _$DownloadPlan {
         return false;
       }
       for (final (j, piece) in track.pieces.indexed) {
-        if (piece.file != theirs.pieces[j].file) return false;
+        final other = theirs.pieces[j];
+        if (piece.file != other.file ||
+            piece.rangeStart != other.rangeStart ||
+            piece.rangeEnd != other.rangeEnd) {
+          return false;
+        }
       }
     }
     return true;
@@ -100,6 +114,15 @@ abstract class PlannedTrack with _$PlannedTrack {
     /// representation or rendition — so a fresh link can be planned again
     /// with the same choice.
     String? sourceId,
+
+    /// Only on [TrackAssembly.ranges]: the file's strong ETag, sent as
+    /// `If-Range` so a file that changed between two ranges answers whole
+    /// and is caught by its size instead of being spliced.
+    String? ifRange,
+
+    /// Only on [TrackAssembly.ranges]: the joined file's extension, which
+    /// ffmpeg reads the container from.
+    String? fileExtension,
   }) = _PlannedTrack;
 
   factory PlannedTrack.fromJson(Map<String, Object?> json) =>
@@ -117,8 +140,23 @@ abstract class PlannedPiece with _$PlannedPiece {
     /// Seconds of media, only on DASH fragments: the local package's
     /// playlist is written from them. Null on the init.
     double? duration,
+
+    /// Inclusive byte range of the file, only on [TrackAssembly.ranges].
+    int? rangeStart,
+    int? rangeEnd,
   }) = _PlannedPiece;
 
   factory PlannedPiece.fromJson(Map<String, Object?> json) =>
       _$PlannedPieceFromJson(json);
+}
+
+extension PlannedPieceRange on PlannedPiece {
+  /// What the `Range` request asks for, or null for the whole resource.
+  String? get rangeHeader =>
+      rangeStart == null ? null : 'bytes=$rangeStart-${rangeEnd ?? ''}';
+
+  /// The size a fetched range must have; null when anything goes.
+  int? get expectedBytes => rangeStart != null && rangeEnd != null
+      ? rangeEnd! - rangeStart! + 1
+      : null;
 }

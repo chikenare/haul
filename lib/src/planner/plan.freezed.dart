@@ -301,7 +301,12 @@ mixin _$PlannedTrack {
  String? get codecs;/// The manifest's id for what this track was planned from — the
 /// representation or rendition — so a fresh link can be planned again
 /// with the same choice.
- String? get sourceId;
+ String? get sourceId;/// Only on [TrackAssembly.ranges]: the file's strong ETag, sent as
+/// `If-Range` so a file that changed between two ranges answers whole
+/// and is caught by its size instead of being spliced.
+ String? get ifRange;/// Only on [TrackAssembly.ranges]: the joined file's extension, which
+/// ffmpeg reads the container from.
+ String? get fileExtension;
 /// Create a copy of PlannedTrack
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -314,16 +319,16 @@ $PlannedTrackCopyWith<PlannedTrack> get copyWith => _$PlannedTrackCopyWithImpl<P
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlannedTrack&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.assembly, assembly) || other.assembly == assembly)&&const DeepCollectionEquality().equals(other.pieces, pieces)&&(identical(other.playlist, playlist) || other.playlist == playlist)&&(identical(other.language, language) || other.language == language)&&(identical(other.label, label) || other.label == label)&&(identical(other.forced, forced) || other.forced == forced)&&(identical(other.codecs, codecs) || other.codecs == codecs)&&(identical(other.sourceId, sourceId) || other.sourceId == sourceId));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlannedTrack&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.assembly, assembly) || other.assembly == assembly)&&const DeepCollectionEquality().equals(other.pieces, pieces)&&(identical(other.playlist, playlist) || other.playlist == playlist)&&(identical(other.language, language) || other.language == language)&&(identical(other.label, label) || other.label == label)&&(identical(other.forced, forced) || other.forced == forced)&&(identical(other.codecs, codecs) || other.codecs == codecs)&&(identical(other.sourceId, sourceId) || other.sourceId == sourceId)&&(identical(other.ifRange, ifRange) || other.ifRange == ifRange)&&(identical(other.fileExtension, fileExtension) || other.fileExtension == fileExtension));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,kind,assembly,const DeepCollectionEquality().hash(pieces),playlist,language,label,forced,codecs,sourceId);
+int get hashCode => Object.hash(runtimeType,kind,assembly,const DeepCollectionEquality().hash(pieces),playlist,language,label,forced,codecs,sourceId,ifRange,fileExtension);
 
 @override
 String toString() {
-  return 'PlannedTrack(kind: $kind, assembly: $assembly, pieces: $pieces, playlist: $playlist, language: $language, label: $label, forced: $forced, codecs: $codecs, sourceId: $sourceId)';
+  return 'PlannedTrack(kind: $kind, assembly: $assembly, pieces: $pieces, playlist: $playlist, language: $language, label: $label, forced: $forced, codecs: $codecs, sourceId: $sourceId, ifRange: $ifRange, fileExtension: $fileExtension)';
 }
 
 
@@ -334,7 +339,7 @@ abstract mixin class $PlannedTrackCopyWith<$Res>  {
   factory $PlannedTrackCopyWith(PlannedTrack value, $Res Function(PlannedTrack) _then) = _$PlannedTrackCopyWithImpl;
 @useResult
 $Res call({
- TrackKind kind, TrackAssembly assembly, List<PlannedPiece> pieces, String? playlist, String? language, String? label, bool forced, String? codecs, String? sourceId
+ TrackKind kind, TrackAssembly assembly, List<PlannedPiece> pieces, String? playlist, String? language, String? label, bool forced, String? codecs, String? sourceId, String? ifRange, String? fileExtension
 });
 
 
@@ -351,7 +356,7 @@ class _$PlannedTrackCopyWithImpl<$Res>
 
 /// Create a copy of PlannedTrack
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? kind = null,Object? assembly = null,Object? pieces = null,Object? playlist = freezed,Object? language = freezed,Object? label = freezed,Object? forced = null,Object? codecs = freezed,Object? sourceId = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? kind = null,Object? assembly = null,Object? pieces = null,Object? playlist = freezed,Object? language = freezed,Object? label = freezed,Object? forced = null,Object? codecs = freezed,Object? sourceId = freezed,Object? ifRange = freezed,Object? fileExtension = freezed,}) {
   return _then(_self.copyWith(
 kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
 as TrackKind,assembly: null == assembly ? _self.assembly : assembly // ignore: cast_nullable_to_non_nullable
@@ -362,6 +367,8 @@ as String?,label: freezed == label ? _self.label : label // ignore: cast_nullabl
 as String?,forced: null == forced ? _self.forced : forced // ignore: cast_nullable_to_non_nullable
 as bool,codecs: freezed == codecs ? _self.codecs : codecs // ignore: cast_nullable_to_non_nullable
 as String?,sourceId: freezed == sourceId ? _self.sourceId : sourceId // ignore: cast_nullable_to_non_nullable
+as String?,ifRange: freezed == ifRange ? _self.ifRange : ifRange // ignore: cast_nullable_to_non_nullable
+as String?,fileExtension: freezed == fileExtension ? _self.fileExtension : fileExtension // ignore: cast_nullable_to_non_nullable
 as String?,
   ));
 }
@@ -447,10 +454,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId,  String? ifRange,  String? fileExtension)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _PlannedTrack() when $default != null:
-return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId);case _:
+return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId,_that.ifRange,_that.fileExtension);case _:
   return orElse();
 
 }
@@ -468,10 +475,10 @@ return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.lang
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId,  String? ifRange,  String? fileExtension)  $default,) {final _that = this;
 switch (_that) {
 case _PlannedTrack():
-return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId);case _:
+return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId,_that.ifRange,_that.fileExtension);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -488,10 +495,10 @@ return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.lang
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId,  String? ifRange,  String? fileExtension)?  $default,) {final _that = this;
 switch (_that) {
 case _PlannedTrack() when $default != null:
-return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId);case _:
+return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId,_that.ifRange,_that.fileExtension);case _:
   return null;
 
 }
@@ -503,7 +510,7 @@ return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.lang
 @JsonSerializable()
 
 class _PlannedTrack implements PlannedTrack {
-  const _PlannedTrack({required this.kind, required this.assembly, required final  List<PlannedPiece> pieces, this.playlist, this.language, this.label, this.forced = false, this.codecs, this.sourceId}): _pieces = pieces;
+  const _PlannedTrack({required this.kind, required this.assembly, required final  List<PlannedPiece> pieces, this.playlist, this.language, this.label, this.forced = false, this.codecs, this.sourceId, this.ifRange, this.fileExtension}): _pieces = pieces;
   factory _PlannedTrack.fromJson(Map<String, dynamic> json) => _$PlannedTrackFromJson(json);
 
 @override final  TrackKind kind;
@@ -528,6 +535,13 @@ class _PlannedTrack implements PlannedTrack {
 /// representation or rendition — so a fresh link can be planned again
 /// with the same choice.
 @override final  String? sourceId;
+/// Only on [TrackAssembly.ranges]: the file's strong ETag, sent as
+/// `If-Range` so a file that changed between two ranges answers whole
+/// and is caught by its size instead of being spliced.
+@override final  String? ifRange;
+/// Only on [TrackAssembly.ranges]: the joined file's extension, which
+/// ffmpeg reads the container from.
+@override final  String? fileExtension;
 
 /// Create a copy of PlannedTrack
 /// with the given fields replaced by the non-null parameter values.
@@ -542,16 +556,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlannedTrack&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.assembly, assembly) || other.assembly == assembly)&&const DeepCollectionEquality().equals(other._pieces, _pieces)&&(identical(other.playlist, playlist) || other.playlist == playlist)&&(identical(other.language, language) || other.language == language)&&(identical(other.label, label) || other.label == label)&&(identical(other.forced, forced) || other.forced == forced)&&(identical(other.codecs, codecs) || other.codecs == codecs)&&(identical(other.sourceId, sourceId) || other.sourceId == sourceId));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlannedTrack&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.assembly, assembly) || other.assembly == assembly)&&const DeepCollectionEquality().equals(other._pieces, _pieces)&&(identical(other.playlist, playlist) || other.playlist == playlist)&&(identical(other.language, language) || other.language == language)&&(identical(other.label, label) || other.label == label)&&(identical(other.forced, forced) || other.forced == forced)&&(identical(other.codecs, codecs) || other.codecs == codecs)&&(identical(other.sourceId, sourceId) || other.sourceId == sourceId)&&(identical(other.ifRange, ifRange) || other.ifRange == ifRange)&&(identical(other.fileExtension, fileExtension) || other.fileExtension == fileExtension));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,kind,assembly,const DeepCollectionEquality().hash(_pieces),playlist,language,label,forced,codecs,sourceId);
+int get hashCode => Object.hash(runtimeType,kind,assembly,const DeepCollectionEquality().hash(_pieces),playlist,language,label,forced,codecs,sourceId,ifRange,fileExtension);
 
 @override
 String toString() {
-  return 'PlannedTrack(kind: $kind, assembly: $assembly, pieces: $pieces, playlist: $playlist, language: $language, label: $label, forced: $forced, codecs: $codecs, sourceId: $sourceId)';
+  return 'PlannedTrack(kind: $kind, assembly: $assembly, pieces: $pieces, playlist: $playlist, language: $language, label: $label, forced: $forced, codecs: $codecs, sourceId: $sourceId, ifRange: $ifRange, fileExtension: $fileExtension)';
 }
 
 
@@ -562,7 +576,7 @@ abstract mixin class _$PlannedTrackCopyWith<$Res> implements $PlannedTrackCopyWi
   factory _$PlannedTrackCopyWith(_PlannedTrack value, $Res Function(_PlannedTrack) _then) = __$PlannedTrackCopyWithImpl;
 @override @useResult
 $Res call({
- TrackKind kind, TrackAssembly assembly, List<PlannedPiece> pieces, String? playlist, String? language, String? label, bool forced, String? codecs, String? sourceId
+ TrackKind kind, TrackAssembly assembly, List<PlannedPiece> pieces, String? playlist, String? language, String? label, bool forced, String? codecs, String? sourceId, String? ifRange, String? fileExtension
 });
 
 
@@ -579,7 +593,7 @@ class __$PlannedTrackCopyWithImpl<$Res>
 
 /// Create a copy of PlannedTrack
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? kind = null,Object? assembly = null,Object? pieces = null,Object? playlist = freezed,Object? language = freezed,Object? label = freezed,Object? forced = null,Object? codecs = freezed,Object? sourceId = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? kind = null,Object? assembly = null,Object? pieces = null,Object? playlist = freezed,Object? language = freezed,Object? label = freezed,Object? forced = null,Object? codecs = freezed,Object? sourceId = freezed,Object? ifRange = freezed,Object? fileExtension = freezed,}) {
   return _then(_PlannedTrack(
 kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
 as TrackKind,assembly: null == assembly ? _self.assembly : assembly // ignore: cast_nullable_to_non_nullable
@@ -590,6 +604,8 @@ as String?,label: freezed == label ? _self.label : label // ignore: cast_nullabl
 as String?,forced: null == forced ? _self.forced : forced // ignore: cast_nullable_to_non_nullable
 as bool,codecs: freezed == codecs ? _self.codecs : codecs // ignore: cast_nullable_to_non_nullable
 as String?,sourceId: freezed == sourceId ? _self.sourceId : sourceId // ignore: cast_nullable_to_non_nullable
+as String?,ifRange: freezed == ifRange ? _self.ifRange : ifRange // ignore: cast_nullable_to_non_nullable
+as String?,fileExtension: freezed == fileExtension ? _self.fileExtension : fileExtension // ignore: cast_nullable_to_non_nullable
 as String?,
   ));
 }
@@ -603,7 +619,8 @@ mixin _$PlannedPiece {
 
  String get url; String get file;/// Seconds of media, only on DASH fragments: the local package's
 /// playlist is written from them. Null on the init.
- double? get duration;
+ double? get duration;/// Inclusive byte range of the file, only on [TrackAssembly.ranges].
+ int? get rangeStart; int? get rangeEnd;
 /// Create a copy of PlannedPiece
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -616,16 +633,16 @@ $PlannedPieceCopyWith<PlannedPiece> get copyWith => _$PlannedPieceCopyWithImpl<P
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlannedPiece&&(identical(other.url, url) || other.url == url)&&(identical(other.file, file) || other.file == file)&&(identical(other.duration, duration) || other.duration == duration));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlannedPiece&&(identical(other.url, url) || other.url == url)&&(identical(other.file, file) || other.file == file)&&(identical(other.duration, duration) || other.duration == duration)&&(identical(other.rangeStart, rangeStart) || other.rangeStart == rangeStart)&&(identical(other.rangeEnd, rangeEnd) || other.rangeEnd == rangeEnd));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,url,file,duration);
+int get hashCode => Object.hash(runtimeType,url,file,duration,rangeStart,rangeEnd);
 
 @override
 String toString() {
-  return 'PlannedPiece(url: $url, file: $file, duration: $duration)';
+  return 'PlannedPiece(url: $url, file: $file, duration: $duration, rangeStart: $rangeStart, rangeEnd: $rangeEnd)';
 }
 
 
@@ -636,7 +653,7 @@ abstract mixin class $PlannedPieceCopyWith<$Res>  {
   factory $PlannedPieceCopyWith(PlannedPiece value, $Res Function(PlannedPiece) _then) = _$PlannedPieceCopyWithImpl;
 @useResult
 $Res call({
- String url, String file, double? duration
+ String url, String file, double? duration, int? rangeStart, int? rangeEnd
 });
 
 
@@ -653,12 +670,14 @@ class _$PlannedPieceCopyWithImpl<$Res>
 
 /// Create a copy of PlannedPiece
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? url = null,Object? file = null,Object? duration = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? url = null,Object? file = null,Object? duration = freezed,Object? rangeStart = freezed,Object? rangeEnd = freezed,}) {
   return _then(_self.copyWith(
 url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
 as String,file: null == file ? _self.file : file // ignore: cast_nullable_to_non_nullable
 as String,duration: freezed == duration ? _self.duration : duration // ignore: cast_nullable_to_non_nullable
-as double?,
+as double?,rangeStart: freezed == rangeStart ? _self.rangeStart : rangeStart // ignore: cast_nullable_to_non_nullable
+as int?,rangeEnd: freezed == rangeEnd ? _self.rangeEnd : rangeEnd // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
@@ -743,10 +762,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String url,  String file,  double? duration)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String url,  String file,  double? duration,  int? rangeStart,  int? rangeEnd)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _PlannedPiece() when $default != null:
-return $default(_that.url,_that.file,_that.duration);case _:
+return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.rangeEnd);case _:
   return orElse();
 
 }
@@ -764,10 +783,10 @@ return $default(_that.url,_that.file,_that.duration);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String url,  String file,  double? duration)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String url,  String file,  double? duration,  int? rangeStart,  int? rangeEnd)  $default,) {final _that = this;
 switch (_that) {
 case _PlannedPiece():
-return $default(_that.url,_that.file,_that.duration);case _:
+return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.rangeEnd);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -784,10 +803,10 @@ return $default(_that.url,_that.file,_that.duration);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String url,  String file,  double? duration)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String url,  String file,  double? duration,  int? rangeStart,  int? rangeEnd)?  $default,) {final _that = this;
 switch (_that) {
 case _PlannedPiece() when $default != null:
-return $default(_that.url,_that.file,_that.duration);case _:
+return $default(_that.url,_that.file,_that.duration,_that.rangeStart,_that.rangeEnd);case _:
   return null;
 
 }
@@ -799,7 +818,7 @@ return $default(_that.url,_that.file,_that.duration);case _:
 @JsonSerializable()
 
 class _PlannedPiece implements PlannedPiece {
-  const _PlannedPiece({required this.url, required this.file, this.duration});
+  const _PlannedPiece({required this.url, required this.file, this.duration, this.rangeStart, this.rangeEnd});
   factory _PlannedPiece.fromJson(Map<String, dynamic> json) => _$PlannedPieceFromJson(json);
 
 @override final  String url;
@@ -807,6 +826,9 @@ class _PlannedPiece implements PlannedPiece {
 /// Seconds of media, only on DASH fragments: the local package's
 /// playlist is written from them. Null on the init.
 @override final  double? duration;
+/// Inclusive byte range of the file, only on [TrackAssembly.ranges].
+@override final  int? rangeStart;
+@override final  int? rangeEnd;
 
 /// Create a copy of PlannedPiece
 /// with the given fields replaced by the non-null parameter values.
@@ -821,16 +843,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlannedPiece&&(identical(other.url, url) || other.url == url)&&(identical(other.file, file) || other.file == file)&&(identical(other.duration, duration) || other.duration == duration));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlannedPiece&&(identical(other.url, url) || other.url == url)&&(identical(other.file, file) || other.file == file)&&(identical(other.duration, duration) || other.duration == duration)&&(identical(other.rangeStart, rangeStart) || other.rangeStart == rangeStart)&&(identical(other.rangeEnd, rangeEnd) || other.rangeEnd == rangeEnd));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,url,file,duration);
+int get hashCode => Object.hash(runtimeType,url,file,duration,rangeStart,rangeEnd);
 
 @override
 String toString() {
-  return 'PlannedPiece(url: $url, file: $file, duration: $duration)';
+  return 'PlannedPiece(url: $url, file: $file, duration: $duration, rangeStart: $rangeStart, rangeEnd: $rangeEnd)';
 }
 
 
@@ -841,7 +863,7 @@ abstract mixin class _$PlannedPieceCopyWith<$Res> implements $PlannedPieceCopyWi
   factory _$PlannedPieceCopyWith(_PlannedPiece value, $Res Function(_PlannedPiece) _then) = __$PlannedPieceCopyWithImpl;
 @override @useResult
 $Res call({
- String url, String file, double? duration
+ String url, String file, double? duration, int? rangeStart, int? rangeEnd
 });
 
 
@@ -858,12 +880,14 @@ class __$PlannedPieceCopyWithImpl<$Res>
 
 /// Create a copy of PlannedPiece
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? url = null,Object? file = null,Object? duration = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? url = null,Object? file = null,Object? duration = freezed,Object? rangeStart = freezed,Object? rangeEnd = freezed,}) {
   return _then(_PlannedPiece(
 url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
 as String,file: null == file ? _self.file : file // ignore: cast_nullable_to_non_nullable
 as String,duration: freezed == duration ? _self.duration : duration // ignore: cast_nullable_to_non_nullable
-as double?,
+as double?,rangeStart: freezed == rangeStart ? _self.rangeStart : rangeStart // ignore: cast_nullable_to_non_nullable
+as int?,rangeEnd: freezed == rangeEnd ? _self.rangeEnd : rangeEnd // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 

@@ -115,6 +115,19 @@ class SourceSelection {
 
   static const _sets = SetEquality<String>();
 
+  factory SourceSelection.fromJson(Map<String, Object?> json) =>
+      SourceSelection(
+        videoId: json['videoId'] as String?,
+        audioIds: {...?(json['audioIds'] as List?)?.cast<String>()},
+        subtitleIds: {...?(json['subtitleIds'] as List?)?.cast<String>()},
+      );
+
+  Map<String, Object?> toJson() => {
+    'videoId': videoId,
+    'audioIds': audioIds.toList(),
+    'subtitleIds': subtitleIds.toList(),
+  };
+
   @override
   int get hashCode => Object.hash(
     videoId,
