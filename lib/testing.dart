@@ -137,6 +137,14 @@ class FakeTransferClient extends TransferClient {
     emit(TaskStatusUpdate(task, TaskStatus.paused));
   }
 
+  /// What Android does a moment after pausing a task at the background time
+  /// limit: it runs it again by itself, without [resume].
+  void rerunByPlatform(DownloadTask task) {
+    paused.remove(task.taskId);
+    inFlight[task.taskId] = task;
+    emit(TaskStatusUpdate(task, TaskStatus.running));
+  }
+
   static int? _rangeSize(DownloadTask task) {
     final range = task.headers['Range'];
     final match = RegExp(r'bytes=(\d+)-(\d+)').firstMatch(range ?? '');
@@ -238,6 +246,27 @@ class FakeFetcher extends SourceFetcher {
     }
     return build(url);
   }
+}
+
+/// Wi-Fi as a test sets it: [set] changes what [onWifi] answers, and tells
+/// whoever listens — or, with `announce: false`, not yet (the platform
+/// noticing before the app's connectivity package does).
+class FakeWifiMonitor implements WifiMonitor {
+  FakeWifiMonitor({bool onWifi = true}) : _onWifi = onWifi;
+
+  bool _onWifi;
+  final _changes = StreamController<bool>.broadcast();
+
+  void set(bool onWifi, {bool announce = true}) {
+    _onWifi = onWifi;
+    if (announce) _changes.add(onWifi);
+  }
+
+  @override
+  Future<bool> onWifi() async => _onWifi;
+
+  @override
+  Stream<bool> get changes => _changes.stream;
 }
 
 /// Writes a small file where ffmpeg would; [error] plays a failed merge.

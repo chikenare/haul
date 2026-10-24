@@ -36,6 +36,7 @@ class EngineConfig {
     this.linkMargin = const Duration(minutes: 30),
     this.foregroundAboveMb,
     this.refreshTimeout = const Duration(minutes: 1),
+    this.platformPauseGrace = const Duration(seconds: 2),
   });
 
   /// Inside application support: one folder per download.
@@ -68,6 +69,12 @@ class EngineConfig {
   /// How long the app's `SourceRefresher` may take before the download
   /// fails as a network error.
   final Duration refreshTimeout;
+
+  /// How long a whole file paused by the platform may take to start again
+  /// on its own before the pause counts as the user's. Android pauses one
+  /// that hits the background time limit and runs it again a second later;
+  /// a notification's pause button looks the same, and stays.
+  final Duration platformPauseGrace;
 }
 
 /// Offline downloads end to end: reads each title's source, picks its
@@ -88,6 +95,8 @@ class DownloadEngine {
     OutputSink sink = const PrivateSink(),
     FfmpegRunner? ffmpeg,
     EngineHooks hooks = const EngineHooks(),
+    ValueListenable<bool>? wifiOnly,
+    WifiMonitor? wifi,
     EngineLogger logger = const PrintLogger(),
     TransferClient? transfer,
     SourceResolver resolver = const SourceResolver(),
@@ -98,6 +107,8 @@ class DownloadEngine {
        _sink = sink,
        _ffmpeg = ffmpeg,
        _hooks = hooks,
+       _wifiOnly = wifiOnly,
+       _wifi = wifi,
        _logger = logger,
        _transfer = transfer ?? PluginTransferClient(),
        _resolver = resolver,
@@ -110,6 +121,15 @@ class DownloadEngine {
   final OutputSink _sink;
   final FfmpegRunner? _ffmpeg;
   final EngineHooks _hooks;
+
+  /// The user's "only on Wi-Fi", read when each piece is handed over and
+  /// followed while it changes. Null: never.
+  final ValueListenable<bool>? _wifiOnly;
+
+  /// Tells a Wi-Fi drop from a network error, and when to go on. Without
+  /// it, a piece the platform held for Wi-Fi until it ran out of retries
+  /// fails the download as a network error.
+  final WifiMonitor? _wifi;
   final EngineLogger _logger;
   final TransferClient _transfer;
   final SourceResolver _resolver;
@@ -148,6 +168,14 @@ class DownloadEngine {
   /// running per download: the next start waits for it, so it never reads
   /// a folder being emptied.
   final Map<String, Future<void>> _cleanups = {};
+
+  /// Whole files the platform paused, waiting [EngineConfig.platformPauseGrace]
+  /// to see whether it runs them again: task id → its timer.
+  final Map<String, Timer> _platformPauses = {};
+
+  /// The last thing [_wifi] said; on Wi-Fi until it says otherwise.
+  bool _onWifi = true;
+  StreamSubscription<bool>? _wifiChanges;
 
   final _changes = StreamController<void>.broadcast(sync: true);
   Future<void>? _ready;
@@ -215,6 +243,17 @@ class DownloadEngine {
       }
     }
     await _cancelStrayTasks();
+
+    // A failed init comes through here again: one subscription, not two.
+    final wifi = _wifi;
+    if (wifi != null) {
+      await _wifiChanges?.cancel();
+      _onWifi = await wifi.onWifi();
+      _wifiChanges = wifi.changes.listen(_setOnWifi);
+    }
+    _wifiOnly?.removeListener(_onWifiOnlyChanged);
+    _wifiOnly?.addListener(_onWifiOnlyChanged);
+
     _emit();
     unawaited(_pump());
   }
@@ -236,6 +275,12 @@ class DownloadEngine {
   Future<void> dispose() async {
     _disposed = true;
     _jobs.clear();
+    for (final timer in _platformPauses.values) {
+      timer.cancel();
+    }
+    _platformPauses.clear();
+    _wifiOnly?.removeListener(_onWifiOnlyChanged);
+    await _wifiChanges?.cancel();
     await _changes.close();
   }
 
@@ -248,6 +293,13 @@ class DownloadEngine {
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
   DownloadRecord? byId(String id) => _records[id];
+
+  /// Only on Wi-Fi and not on it: nothing starts, and what was downloading
+  /// is back in the queue until Wi-Fi returns. A queued record is waiting
+  /// for Wi-Fi rather than for its turn. [watchAll] emits when it changes.
+  bool get waitingForWifi => _requiresWifi && !_onWifi;
+
+  bool get _requiresWifi => _wifiOnly?.value ?? false;
 
   DownloadRecord? byKey(String key) =>
       _records.values.where((r) => r.key == key).firstOrNull;
@@ -459,12 +511,14 @@ class DownloadEngine {
     unawaited(_pump());
   }
 
-  /// Deletes everything not finished. Answers how many went.
+  /// Deletes everything not finished. Answers how many went. A title that
+  /// finished once and is being exported, or failed publishing its export,
+  /// is not pending: it stays.
   Future<int> cancelPending() async {
     await _whenReady();
     final pending = [
       for (final r in _records.values)
-        if (r.status != DownloadStatus.done) r.id,
+        if (r.status != DownloadStatus.done && r.outputLocator == null) r.id,
     ];
     for (final id in pending) {
       await delete(id);
@@ -477,6 +531,108 @@ class DownloadEngine {
     await _whenReady();
     final record = _records[id];
     if (record != null) _put(record.copyWith(metadata: metadata));
+  }
+
+  /// Turns a finished package into one file, handed to the sink as if it
+  /// had been asked for with [OutputMode.file] — under [name], or the
+  /// record's. The package goes once the file is written: keeping both
+  /// would take the title's space twice.
+  ///
+  /// Answers null when done, or why not. A failure before the file was
+  /// written leaves the package as it was, still done; after it, the
+  /// download fails as any publish would, and [retry] only publishes again.
+  /// Throws [StateError] when [id] is not a finished package.
+  Future<DownloadError?> export(String id, {OutputName? name}) async {
+    await _whenReady();
+    final before = _records[id];
+    final exported = _transition(
+      id,
+      const {DownloadStatus.done},
+      DownloadStatus.assembling,
+      also: (r) => r.copyWith(
+        output: OutputMode.file,
+        name: name ?? r.name,
+        error: null,
+      ),
+      when: (r) => r.outputKind == OutputKind.package,
+    );
+    if (!exported) throw StateError('$id is not a finished package');
+
+    final plan = await _readPlan(id);
+    try {
+      if (plan == null) {
+        throw const SourceException(SourceErrorCode.missingPieces, 'no plan');
+      }
+      await _exportFile(_records[id]!, plan);
+      return null;
+    } catch (e, st) {
+      final error = _assemblyError(id, e, st);
+      if (plan != null && await _readyToPublish(id)) {
+        _fail(id, error);
+      } else {
+        // Nothing written: the package is still whole, and still plays.
+        _transition(
+          id,
+          const {DownloadStatus.assembling},
+          DownloadStatus.done,
+          also: (r) => r.copyWith(output: before!.output, name: before.name),
+        );
+      }
+      return error;
+    } finally {
+      unawaited(_pump());
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Wi-Fi
+
+  void _setOnWifi(bool onWifi) {
+    if (_disposed || onWifi == _onWifi) return;
+    _onWifi = onWifi;
+    _emit();
+    unawaited(_requeueMoving().whenComplete(_pump));
+  }
+
+  /// A piece found Wi-Fi gone before [_wifi] said so — or after, with its
+  /// download still moving: either way it goes back to the queue.
+  void _holdForWifi() {
+    if (_disposed) return;
+    _onWifi = false;
+    _emit();
+    unawaited(_requeueMoving().whenComplete(_pump));
+  }
+
+  /// The pieces in flight were handed over with the old requirement: they
+  /// are asked for again with the new one. What is on disk stays.
+  void _onWifiOnlyChanged() {
+    if (_disposed) return;
+    _emit();
+    unawaited(_requeueMoving().whenComplete(_pump));
+  }
+
+  /// The download reading its source or fetching goes back to the queue,
+  /// its pieces in flight cancelled; [_pump] starts it again when it may.
+  Future<void> _requeueMoving() async {
+    for (final record in _records.values.toList()) {
+      final moved = _transition(record.id, const {
+        DownloadStatus.resolving,
+        DownloadStatus.downloading,
+      }, DownloadStatus.queued);
+      if (!moved) continue;
+      await _stopJob(record.id);
+      if (_recovering.contains(record.id)) await _cancelTasksOf(record.id);
+    }
+  }
+
+  /// Whether a piece's failure is Wi-Fi going away under a download that
+  /// only runs on it, rather than the network failing.
+  Future<bool> _lostWifi(TaskStatusUpdate update) async {
+    final wifi = _wifi;
+    if (wifi == null || !_requiresWifi) return false;
+    if (update.exception is TaskHttpException) return false;
+    if (isOutOfSpace(update.exception?.description ?? '')) return false;
+    return !await wifi.onWifi();
   }
 
   // ---------------------------------------------------------------------
@@ -494,6 +650,8 @@ class DownloadEngine {
       do {
         _pumpAgain = false;
         while (!_records.values.any((r) => r.isActive)) {
+          // Reading a source goes over the network too, not only pieces.
+          if (waitingForWifi) break;
           final next = _next();
           if (next == null) break;
           await _startSafely(next.id);
@@ -901,6 +1059,9 @@ class DownloadEngine {
           ? Updates.statusAndProgress
           : Updates.status,
       retries: config.retries,
+      // Held by the platform itself, so it never runs on mobile data while
+      // the app sleeps; a change of the setting asks for it again.
+      requiresWiFi: _requiresWifi,
       // Lets the plugin carry a long single request past Android's
       // nine-minute limit when the server allows ranges.
       allowPause: whole,
@@ -949,28 +1110,31 @@ class DownloadEngine {
           taskId,
           File(p.join(_trackDir(job.id, piece.t).path, piece.planned.file)),
         );
-      // Cancelled by someone else (a notification button, the system): the
-      // download would wait for it forever, so it is asked for again. The
-      // engine never cancels a task of the run it follows, and a cancel of
-      // a piece not handed over (a late report) is the feeder's to deal
-      // with, which enqueues it once.
+      // Cancelled by someone else — a notification's cancel button, or the
+      // app through the plugin: the user stopping the download, which is a
+      // pause, not a loss. The engine never cancels a task of the run it
+      // follows, and a cancel of a piece not handed over (a late report) is
+      // nobody's.
       case TaskStatus.canceled:
-        if (job.inFlight.remove(taskId)) {
-          job.queue.addFirst(job.pieces[taskId]!);
-          _feedSafely(job);
-        }
-      // Paused by the platform (whole files allow it): resumed, or — when
-      // it kept nothing to resume from — cancelled, which asks for it again
-      // once the cancel is reported.
+        if (job.inFlight.contains(taskId)) await pause(job.id);
+      // Paused by the platform (whole files allow it): a notification's
+      // pause button, which is the user's, or Android's background time
+      // limit, which runs it again a moment later. Told apart by waiting.
       case TaskStatus.paused:
-        if (update.task case final DownloadTask task) {
-          final resumed = await _transfer.resume(task);
-          if (!resumed &&
-              _jobs[job.id] == job &&
-              job.inFlight.contains(taskId)) {
-            await _transfer.cancelTasksWithIds([taskId]);
+        _platformPauses.remove(taskId)?.cancel();
+        _platformPauses[taskId] = Timer(config.platformPauseGrace, () {
+          _platformPauses.remove(taskId);
+          if (_jobs[job.id] == job && job.inFlight.contains(taskId)) {
+            unawaited(pause(job.id));
           }
-        }
+        });
+      case TaskStatus.running:
+        _platformPauses.remove(taskId)?.cancel();
+      case TaskStatus.failed || TaskStatus.notFound
+          when await _lostWifi(update):
+        // Not a failure: back to the queue until Wi-Fi returns. Decided
+        // once, by whichever piece reports first.
+        if (_jobs[job.id] == job) _holdForWifi();
       case TaskStatus.failed || TaskStatus.notFound:
         final status =
             update.responseStatusCode ??
@@ -1182,29 +1346,36 @@ class DownloadEngine {
         await _exportFile(record, plan);
       }
     } catch (e, st) {
-      final error = switch (e) {
-        FfmpegException(:final log) when isOutOfSpace(log) =>
-          const DownloadError(code: DownloadErrorCode.noSpace),
-        FfmpegException() => const DownloadError(code: DownloadErrorCode.mux),
-        _PublishException() => const DownloadError(
-          code: DownloadErrorCode.publish,
-        ),
-        _ => downloadErrorOf(e),
-      };
-      if (error.code != DownloadErrorCode.noSpace) {
-        _logger.error(
-          e is _PublishException ? e.cause : e,
-          st,
-          context: {
-            'id': id,
-            'step': 'assemble',
-            if (e is FfmpegException) 'lastLine': _lastLine(e.log),
-          },
-        );
-      }
-      _fail(id, error);
+      _fail(id, _assemblyError(id, e, st));
     }
     unawaited(_pump());
+  }
+
+  /// What a failed package, merge or publish fails the download with;
+  /// reported unless it is the disk being full.
+  DownloadError _assemblyError(String id, Object e, StackTrace st) {
+    final error = switch (e) {
+      FfmpegException(:final log) when isOutOfSpace(log) => const DownloadError(
+        code: DownloadErrorCode.noSpace,
+      ),
+      FfmpegException() => const DownloadError(code: DownloadErrorCode.mux),
+      _PublishException() => const DownloadError(
+        code: DownloadErrorCode.publish,
+      ),
+      _ => downloadErrorOf(e),
+    };
+    if (error.code != DownloadErrorCode.noSpace) {
+      _logger.error(
+        e is _PublishException ? e.cause : e,
+        st,
+        context: {
+          'id': id,
+          'step': 'assemble',
+          if (e is FfmpegException) 'lastLine': _lastLine(e.log),
+        },
+      );
+    }
+    return error;
   }
 
   /// Writes the one file in the download's folder — merged, joined, or the
@@ -1430,17 +1601,20 @@ class DownloadEngine {
   // ---------------------------------------------------------------------
   // Helpers
 
-  /// Moves [id] to [to] only from one of [from], answering whether it did.
-  /// Synchronous, so of two racing callers exactly one wins.
+  /// Moves [id] to [to] only from one of [from] — and only [when] it holds
+  /// — answering whether it did. Synchronous, so of two racing callers
+  /// exactly one wins.
   bool _transition(
     String id,
     Set<DownloadStatus> from,
     DownloadStatus to, {
     DownloadRecord Function(DownloadRecord record)? also,
+    bool Function(DownloadRecord record)? when,
   }) {
     if (_disposed) return false;
     final record = _records[id];
     if (record == null || !from.contains(record.status)) return false;
+    if (when != null && !when(record)) return false;
     var next = record.copyWith(status: to);
     if (also != null) next = also(next);
     _put(next);

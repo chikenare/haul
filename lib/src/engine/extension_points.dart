@@ -100,6 +100,17 @@ class FfmpegException implements Exception {
       'FfmpegException(${log.length > 300 ? log.substring(log.length - 300) : log})';
 }
 
+/// Whether the device is on Wi-Fi, for a download that only runs there
+/// (`DownloadEngine.wifiOnly`). The engine does not depend on a
+/// connectivity package: each app brings its own.
+abstract interface class WifiMonitor {
+  /// Now: Wi-Fi, or another network that is not metered (ethernet).
+  Future<bool> onWifi();
+
+  /// Every change of [onWifi].
+  Stream<bool> get changes;
+}
+
 /// What the engine reports and does not decide itself.
 abstract interface class EngineLogger {
   void warn(String message);

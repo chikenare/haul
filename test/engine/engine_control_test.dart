@@ -240,26 +240,29 @@ void main() {
   });
 
   group('canceled updates', () {
-    test(
-      'a pending piece cancelled by someone else is asked for again',
-      () async {
-        final engine = await env.engine();
-        final (:id, outcome: _) = await engine.enqueue(request());
-        await waitUntil(() => env.transfer.enqueued.length == 6);
-        final victim = env.transfer.enqueued.first;
+    test('a pending piece cancelled by someone else is the user pausing: the '
+        'rest stops, the files stay, and resume goes on', () async {
+      final engine = await env.engine();
+      final (:id, outcome: _) = await engine.enqueue(request());
+      await waitUntil(() => env.transfer.enqueued.length == 6);
+      await env.transfer.complete(env.transfer.enqueued[0]);
+      await waitUntil(() => engine.byId(id)!.progress.donePieces == 1);
+      final victim = env.transfer.enqueued[1];
 
-        // A notification button, or the system.
-        env.transfer.inFlight.remove(victim.taskId);
-        env.transfer.emit(TaskStatusUpdate(victim, TaskStatus.canceled));
-        await waitUntil(() => env.transfer.enqueued.length == 7);
+      // A notification's cancel button.
+      env.transfer.inFlight.remove(victim.taskId);
+      env.transfer.emit(TaskStatusUpdate(victim, TaskStatus.canceled));
+      await waitForStatus(engine, id, DownloadStatus.paused);
 
-        expect(env.transfer.enqueued.last.taskId, victim.taskId);
-        expect(engine.byId(id)!.status, DownloadStatus.downloading);
+      expect(env.inFlightOf(id), isEmpty);
+      expect(engine.byId(id)!.progress.donePieces, 1);
+      expect(env.transfer.enqueued, hasLength(6), reason: 'nothing asked for');
 
-        await env.transfer.completeAll();
-        await waitForStatus(engine, id, DownloadStatus.done);
-      },
-    );
+      await engine.resume(id);
+      await waitUntil(() => env.transfer.enqueued.length == 11);
+      await env.transfer.completeAll();
+      await waitForStatus(engine, id, DownloadStatus.done);
+    });
 
     test('the engine\'s own cancels, reported after a quick resume, are not '
         'asked for twice', () async {
@@ -302,7 +305,7 @@ void main() {
     });
 
     test('after a retry, updates of the failed run count for nothing, and '
-        'a real cancel of the new run is still asked for again', () async {
+        'a real cancel of the new run still pauses it', () async {
       final engine = await env.engine();
       final (:id, outcome: _) = await engine.enqueue(request());
       await waitUntil(() => env.transfer.enqueued.length == 6);
@@ -334,9 +337,7 @@ void main() {
       final victim = fresh.first;
       env.transfer.inFlight.remove(victim.taskId);
       env.transfer.emit(TaskStatusUpdate(victim, TaskStatus.canceled));
-      await waitUntil(() => env.transfer.enqueued.length == 7);
-      await env.transfer.completeAll();
-      await waitForStatus(engine, id, DownloadStatus.done);
+      await waitForStatus(engine, id, DownloadStatus.paused);
     });
   });
 

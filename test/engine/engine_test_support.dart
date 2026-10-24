@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:haul/haul.dart';
 import 'package:haul/testing.dart';
@@ -176,6 +177,8 @@ class Env {
     OutputSink sink = const PrivateSink(),
     FfmpegRunner? ffmpeg,
     EngineHooks hooks = const EngineHooks(),
+    ValueListenable<bool>? wifiOnly,
+    WifiMonitor? wifi,
     SourceFetcher? fetcher,
     bool init = true,
   }) async {
@@ -191,6 +194,8 @@ class Env {
       criteria: criteria ?? (_) async => latinCriteria,
       sink: sink,
       hooks: hooks,
+      wifiOnly: wifiOnly,
+      wifi: wifi,
     );
     addTearDown(engine.dispose);
     if (init) await engine.init();

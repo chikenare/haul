@@ -254,30 +254,57 @@ void main() {
   });
 
   group('#4 tasks the platform paused', () {
-    test('are resumed', () async {
-      final engine = await env.engine();
+    const grace = EngineConfig(platformPauseGrace: Duration(milliseconds: 100));
+
+    test('and run again by it (Android\'s time limit) keep going', () async {
+      final engine = await env.engine(config: grace);
       final (:id, outcome: _) = await engine.enqueue(request(url: fileUrl));
       await waitUntil(() => env.transfer.enqueued.length == 1);
       final task = env.transfer.enqueued.single;
 
       env.transfer.pauseByPlatform(task);
-      await waitUntil(() => env.transfer.resumed.isNotEmpty);
-      expect(env.transfer.inFlight.keys, [task.taskId]);
+      env.transfer.rerunByPlatform(task);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      expect(engine.byId(id)!.status, DownloadStatus.downloading);
+      expect(env.transfer.canceledIds, isEmpty);
       await env.transfer.completeAll();
       await waitForStatus(engine, id, DownloadStatus.done);
     });
 
-    test('that cannot resume are cancelled and asked for again', () async {
-      env.transfer.refuseResume = true;
-      final engine = await env.engine();
+    test(
+      'and left paused (a notification\'s button) are the user pausing',
+      () async {
+        final engine = await env.engine(config: grace);
+        final (:id, outcome: _) = await engine.enqueue(request(url: fileUrl));
+        await waitUntil(() => env.transfer.enqueued.length == 1);
+        final task = env.transfer.enqueued.single;
+
+        env.transfer.pauseByPlatform(task);
+        expect(engine.byId(id)!.status, DownloadStatus.downloading);
+        await waitForStatus(engine, id, DownloadStatus.paused);
+        expect(env.transfer.paused, isEmpty, reason: 'its task let go');
+        expect(env.transfer.resumed, isEmpty);
+
+        await engine.resume(id);
+        await waitUntil(() => env.transfer.enqueued.length == 2);
+        await env.transfer.completeAll();
+        await waitForStatus(engine, id, DownloadStatus.done);
+      },
+    );
+
+    test('and then paused by the user wait for nothing more', () async {
+      final engine = await env.engine(config: grace);
       final (:id, outcome: _) = await engine.enqueue(request(url: fileUrl));
       await waitUntil(() => env.transfer.enqueued.length == 1);
 
       env.transfer.pauseByPlatform(env.transfer.enqueued.single);
+      await engine.pause(id);
+      await engine.resume(id);
       await waitUntil(() => env.transfer.enqueued.length == 2);
-      expect(env.transfer.paused, isEmpty);
-      await env.transfer.completeAll();
-      await waitForStatus(engine, id, DownloadStatus.done);
+      // The first run's timer finds another run: nothing to pause.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(engine.byId(id)!.status, DownloadStatus.downloading);
     });
 
     test('before a kill are resumed when followed again', () async {

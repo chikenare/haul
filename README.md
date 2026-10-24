@@ -27,6 +27,8 @@ takes:
 | `OutputSink` | Where a finished file goes. `PrivateSink` (default) keeps it in the download's folder; `DirectorySink` moves it into a user folder under `OutputName.folders`, never over another file (`Name (2).ext`). Packages always stay private. |
 | `FfmpegRunner` | Runs `MkvArgs` with the app's own ffmpeg. Only needed when a download becomes one file from several tracks. |
 | `EngineHooks` | `onWholeFileTask`: dress the task of a file fetched in one request (a notification, which on Android keeps a long one in the foreground). |
+| `wifiOnly` | A `ValueListenable<bool>`: the user's "only on Wi-Fi", followed while it changes. Null: never. |
+| `WifiMonitor` | Whether the device is on Wi-Fi now, and when that changes (the app's connectivity package). Tells a Wi-Fi drop from a network error, and when to go on. |
 | `EngineLogger` | Warnings and unexpected errors, for the app's crash reporting. `PrintLogger` by default. |
 
 `package:haul/testing.dart` has fakes (`FakeTransferClient` and
@@ -75,6 +77,28 @@ or ffmpeg.
   publish after that only publishes again. A `ReservingOutputSink` (such as
   `DirectorySink`) says where the file will go before moving it, and the
   engine saves that first: a kill after the move finds the file there.
+- **Only on Wi-Fi.** With `wifiOnly` on, every piece is handed over with
+  `requiresWiFi`, so the platform never fetches it on mobile data, even
+  while the app sleeps. Off Wi-Fi nothing starts — reading a source is
+  network too — and a download in flight goes back to the queue with its
+  files; `engine.waitingForWifi` says so (`watchAll` emits when it
+  changes), and it goes on by itself when Wi-Fi returns. A piece failing
+  off Wi-Fi is that, not an error. Changing the setting asks for the pieces
+  in flight again under the new one. Without a `WifiMonitor`, a drop that
+  outlasts the platform's retries fails as `network`.
+- **The notification's buttons are the user's.** A piece cancelled from
+  outside the engine, or a whole file paused and left paused, pauses the
+  download: `resume` goes on from what is on disk. Android also pauses a
+  whole file at its background time limit and runs it again a second
+  later; a pause followed by `running` within
+  `EngineConfig.platformPauseGrace` is that, and nothing happens.
+- **A package can become a file later.** `engine.export(id, name: …)`
+  merges a finished package with ffmpeg and hands it to the sink, as
+  `OutputMode.file` would have; the package goes once the file is written.
+  It answers null or the `DownloadError`: a failed merge leaves the package
+  whole and done, a failed publish fails the download and `retry` only
+  publishes again. It holds the queue while it runs, and a kill in the
+  middle is finished at the next start without fetching anything.
 - **Errors are codes.** `DownloadError.code` is a `DownloadErrorCode`
   (`network`, `http` with `httpStatus`, `no_space`, `mux_failed`,
   `unavailable`, `corrupt`, `publish_failed`, `unknown`) or the app's own from
@@ -135,6 +159,7 @@ await engine.pause(id);
 await engine.resume(id);
 await engine.retry(id); // after a failure
 await engine.delete(id); // its folder and what it published
+final error = await engine.export(id); // a finished package → one file
 ```
 
 To let the user pick the tracks first, resolve and plan with the planner and
