@@ -85,6 +85,7 @@ class HaulFormatChoice extends StatelessWidget {
       groupValue: merge,
       onChanged: (value) => onChanged(value ?? false),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           RadioListTile<bool>(
             value: false,
@@ -143,6 +144,7 @@ class HaulDestinationChoice extends StatelessWidget {
         }
       },
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           RadioListTile<String>(
             value: 'public',
