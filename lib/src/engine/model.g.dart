@@ -96,6 +96,7 @@ _DownloadRecord _$DownloadRecordFromJson(Map<String, dynamic> json) =>
       section: json['section'] as String?,
       order: json['order'] as num?,
       imageUrl: json['imageUrl'] as String?,
+      frameLocator: json['frameLocator'] as String?,
       status: $enumDecode(_$DownloadStatusEnumMap, json['status']),
       error: json['error'] == null
           ? null
@@ -139,6 +140,7 @@ Map<String, dynamic> _$DownloadRecordToJson(_DownloadRecord instance) =>
       'section': instance.section,
       'order': instance.order,
       'imageUrl': instance.imageUrl,
+      'frameLocator': instance.frameLocator,
       'status': _$DownloadStatusEnumMap[instance.status]!,
       'error': instance.error?.toJson(),
       'source': const _SourceConverter().toJson(instance.source),

@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:haul/haul.dart';
 import 'package:haul/src/engine/groups.dart' show compareSections;
+import 'package:haul/testing.dart';
 
 import 'engine_test_support.dart';
 
@@ -161,5 +163,152 @@ void main() {
         expect(engine.group('show-1'), isNull);
       },
     );
+  });
+
+  group('GroupProgress', () {
+    DownloadRecord r(DownloadStatus status, {double? fraction}) =>
+        _record('x').copyWith(
+          status: status,
+          progress: DownloadProgress(
+            bytes: ((fraction ?? 0) * 100).round(),
+            totalBytes: fraction == null ? 0 : 100,
+          ),
+        );
+
+    test('each download counts the same', () {
+      final progress = GroupProgress.of([
+        r(DownloadStatus.done),
+        r(DownloadStatus.downloading, fraction: 0.5),
+        r(DownloadStatus.paused, fraction: 0),
+        r(DownloadStatus.failed),
+      ]);
+      expect(progress.total, 4);
+      expect(progress.done, 1);
+      expect(progress.active, 1);
+      expect(progress.fraction, closeTo(1.5 / 4, 1e-9));
+      expect(progress.isActive, isTrue);
+      expect(progress.isStopped, isFalse);
+      expect(progress.isDone, isFalse);
+    });
+
+    test('stopped once nothing moves and something waits', () {
+      final progress = GroupProgress.of([
+        r(DownloadStatus.done),
+        r(DownloadStatus.paused, fraction: 0.2),
+      ]);
+      expect(progress.isStopped, isTrue);
+      expect(GroupProgress.of(const []).isEmpty, isTrue);
+      expect(GroupProgress.of([r(DownloadStatus.done)]).isDone, isTrue);
+    });
+  });
+
+  group('details', () {
+    late Env env;
+
+    setUp(() => env = Env());
+
+    test('updateDetails files an older download under a group', () async {
+      final engine = await env.engine();
+      final old = await engine.enqueue(request(key: 'e1'));
+      expect(engine.byId(old.id)!.group, isNull);
+
+      await engine.updateDetails(old.id, group: _loki, section: '1', order: 3);
+      final record = engine.byId(old.id)!;
+      expect(record.group, _loki);
+      expect(record.section, '1');
+      expect(record.order, 3);
+      expect(engine.group('show-1')!.ids, [old.id]);
+
+      // Only what is given changes.
+      await engine.updateDetails(old.id, order: 4);
+      expect(engine.byId(old.id)!.section, '1');
+      expect(engine.byId(old.id)!.order, 4);
+    });
+
+    test('asking again for a download files it as the request says', () async {
+      final engine = await env.engine();
+      final first = await engine.enqueue(request(key: 'e1'));
+      final again = await engine.enqueue(
+        request(key: 'e1', group: _loki, section: '2'),
+      );
+      expect(again.outcome, EnqueueOutcome.existing);
+      expect(engine.byId(first.id)!.group, _loki);
+      expect(engine.byId(first.id)!.section, '2');
+    });
+
+    test('group progress and actions by section', () async {
+      final engine = await env.engine();
+      final s1 = await engine.enqueue(
+        request(key: 's1', group: _loki, section: '1'),
+      );
+      final s2 = await engine.enqueue(
+        request(key: 's2', group: _loki, section: '2'),
+      );
+
+      await engine.pauseGroup('show-1', section: '1');
+      expect(engine.byId(s1.id)!.status, DownloadStatus.paused);
+      expect(engine.byId(s2.id)!.status, isNot(DownloadStatus.paused));
+      expect(engine.groupProgress('show-1', section: '1').isStopped, isTrue);
+      expect(engine.groupProgress('show-1').total, 2);
+
+      await engine.deleteGroup('show-1', section: '1');
+      expect(engine.records.map((r) => r.id), [s2.id]);
+    });
+  });
+
+  group('thumbnails', () {
+    late Env env;
+
+    setUp(() => env = Env());
+
+    test('a download without an image gets a frame of itself', () async {
+      final thumbnails = FakeThumbnails();
+      final engine = await env.engine(thumbnails: thumbnails);
+      final result = await engine.enqueue(request(url: fileUrl));
+      await env.transfer.completeAll();
+      await waitForStatus(engine, result.id, DownloadStatus.done);
+      await waitUntil(() => engine.byId(result.id)!.frameLocator != null);
+
+      final record = engine.byId(result.id)!;
+      final image = engine.imageOf(record)!;
+      expect(File(image).existsSync(), isTrue);
+      expect(thumbnails.grabbed.single.path, engine.outputPath(record));
+    });
+
+    test('the app image wins, and no frame is taken', () async {
+      final thumbnails = FakeThumbnails();
+      final engine = await env.engine(thumbnails: thumbnails);
+      final result = await engine.enqueue(
+        DownloadRequest(
+          key: 'm',
+          title: 'm',
+          name: const OutputName(baseName: 'm'),
+          source: const SourceRequest(url: fileUrl),
+          imageUrl: 'https://img.example/poster.jpg',
+        ),
+      );
+      await env.transfer.completeAll();
+      await waitForStatus(engine, result.id, DownloadStatus.done);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(thumbnails.grabbed, isEmpty);
+      expect(
+        engine.imageOf(engine.byId(result.id)!),
+        'https://img.example/poster.jpg',
+      );
+    });
+
+    test('a frame that cannot be taken leaves the download done', () async {
+      final engine = await env.engine(thumbnails: FakeThumbnails(fail: true));
+      final result = await engine.enqueue(request(url: fileUrl));
+      await env.transfer.completeAll();
+      await waitForStatus(engine, result.id, DownloadStatus.done);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final record = engine.byId(result.id)!;
+      expect(record.status, DownloadStatus.done);
+      expect(record.frameLocator, isNull);
+      expect(engine.imageOf(record), isNull);
+    });
   });
 }

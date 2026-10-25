@@ -133,7 +133,11 @@ class CatalogScreen extends StatelessWidget {
         const _Heading('Movies'),
         for (final item in movies) _CatalogRow(item: item),
         _Heading('${clips.title} (a group in two seasons)'),
-        for (final item in episodes) _CatalogRow(item: item),
+        for (final season in ['1', '2']) ...[
+          _SeasonRow(season: season),
+          for (final item in episodes.where((e) => e.section == season))
+            _CatalogRow(item: item),
+        ],
       ],
     );
   }
@@ -182,6 +186,46 @@ class _CatalogRow extends StatelessWidget {
               scope.settings!.value.output(subtitleSidecars: android),
             ),
           );
+        },
+      ),
+    );
+  }
+}
+
+/// A whole season at once: the group's button for one section.
+class _SeasonRow extends StatelessWidget {
+  const _SeasonRow({required this.season});
+
+  final String season;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = HaulScope.of(context);
+    return ListTile(
+      title: Text('Season $season'),
+      subtitle: HaulGroupProgressBuilder(
+        groupId: clips.id,
+        section: season,
+        builder: (context, progress) => Text(
+          HaulScope.stringsOf(context).doneOf(
+            progress.done,
+            episodes.where((e) => e.section == season).length,
+          ),
+        ),
+      ),
+      trailing: HaulGroupDownloadButton(
+        groupId: clips.id,
+        section: season,
+        onDownload: () async {
+          final android = Theme.of(context).platform == TargetPlatform.android;
+          if (!await ensureHaulSetup(context, showWifiOnly: true)) return;
+          // What is there already is left as it is.
+          await scope.engine.enqueueAll([
+            for (final item in episodes.where((e) => e.section == season))
+              item.request(
+                scope.settings!.value.output(subtitleSidecars: android),
+              ),
+          ]);
         },
       ),
     );

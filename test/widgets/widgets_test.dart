@@ -50,6 +50,7 @@ void main() {
       store: MemoryRecordStore(),
       ffmpeg: FakeFfmpeg(),
       logger: RecordingLogger(),
+      thumbnails: null,
     );
     android = FakeHaulAndroid();
     stored = [];
@@ -91,10 +92,7 @@ void main() {
       expect(find.byType(HaulGroupTile), findsOneWidget);
       expect(find.byType(HaulDownloadTile), findsOneWidget);
       expect(find.text('Loki'), findsOneWidget);
-      expect(
-        find.text(const HaulStrings().downloads(2), findRichText: true),
-        findsOneWidget,
-      );
+      expect(find.text(const HaulStrings().doneOf(0, 2)), findsOneWidget);
 
       await tester.tap(find.byType(HaulGroupTile));
       expect(opened?.group.id, 'loki');
@@ -177,6 +175,65 @@ void main() {
     );
     await tester.tap(find.byType(HaulDownloadButton));
     expect(asked, 1);
+  });
+
+  group('HaulGroupDownloadButton', () {
+    testWidgets('asks the app while nothing of the season is there', (
+      tester,
+    ) async {
+      await tester.runAsync(engine.init);
+      var asked = 0;
+      await tester.pumpWidget(
+        app(
+          HaulGroupDownloadButton(
+            groupId: 'loki',
+            section: '1',
+            onDownload: () async => asked++,
+          ),
+        ),
+      );
+      await tester.tap(find.byType(HaulGroupDownloadButton));
+      expect(asked, 1);
+    });
+
+    testWidgets('pauses the season, then resumes it', (tester) async {
+      await enqueue(tester, [
+        _request('s1e1', group: _loki, section: '1'),
+        _request('s1e2', group: _loki, section: '1'),
+        _request('s2e1', group: _loki, section: '2'),
+      ]);
+      await tester.pumpWidget(
+        app(
+          HaulGroupDownloadButton(
+            groupId: 'loki',
+            section: '1',
+            onDownload: () async {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      Future<void> tapAndSettle() async {
+        await tester.tap(find.byType(HaulGroupDownloadButton));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
+
+      await tapAndSettle();
+      final statuses = {for (final r in engine.records) r.key: r.status};
+      expect(statuses['s1e1'], DownloadStatus.paused);
+      expect(statuses['s1e2'], DownloadStatus.paused);
+      expect(statuses['s2e1'], isNot(DownloadStatus.paused));
+      expect(
+        find.byTooltip(RegExp(const HaulStrings().resumeAll)),
+        findsOneWidget,
+      );
+
+      await tapAndSettle();
+      expect(engine.byKey('s1e1')!.status, isNot(DownloadStatus.paused));
+    });
   });
 
   group('ensureHaulSetup', () {

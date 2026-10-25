@@ -115,7 +115,15 @@ or ffmpeg.
   order (`2` before `10`) and by `order` within. The list keeps its identity
   while only progress changes, so a list built on `watchEntries()` rebuilds
   when a download comes, goes or moves, and each row follows its own record.
-  `pauseGroup`, `resumeGroup` and `deleteGroup` act on all of one.
+  `pauseGroup`, `resumeGroup` and `deleteGroup` act on all of one, or on
+  one `section`; `groupProgress` / `watchGroupProgress` say how far it is.
+  Downloads asked for before the app grouped them are filed with
+  `updateDetails(id, group:, section:, order:)` — read their `metadata` and
+  file them once — and asking again for one files it as the request says.
+- **Pictures.** A request's `imageUrl` is what the download is shown by.
+  Without one, the engine takes a frame of the finished download
+  (`ThumbnailGrabber`, `FrameGrabber` by default; `thumbnails: null` turns
+  it off). `engine.imageOf(record)` answers either.
 
 ### Android
 
@@ -219,6 +227,9 @@ HaulScope(
 ```
 
 - **Default widgets**: `HaulDownloadList` (grouped, `onOpenGroup`),
+  `HaulGroupDownloadButton(groupId, section:, onDownload:)` for a show or a
+  season (download what is missing, pause all, resume all) with
+  `HaulGroupProgressIcon` / `HaulGroupProgressBuilder`,
   `HaulGroupView` + `HaulGroupActions`, `HaulDownloadTile`,
   `HaulDownloadButton(downloadKey, onDownload)`, `HaulProgressIcon`,
   `HaulActionsMenu`, `HaulThumbnail`; `ensureHaulSetup(context)` before the

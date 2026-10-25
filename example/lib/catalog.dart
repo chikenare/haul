@@ -49,11 +49,8 @@ class SampleItem {
 const _poster =
     'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';
 
-const clips = DownloadGroup(
-  id: 'clips',
-  title: 'Test clips',
-  imageUrl: _poster,
-);
+/// No picture of its own: its rows show a frame of each episode.
+const clips = DownloadGroup(id: 'clips', title: 'Test clips');
 
 /// Public test streams, free to download.
 const movies = [

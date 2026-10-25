@@ -429,7 +429,11 @@ class _ProgressThumbnail extends StatelessWidget {
     final fraction = record.progress.fraction;
     return Stack(
       children: [
-        HaulThumbnail(imageUrl: record.imageUrl ?? record.group?.imageUrl),
+        HaulThumbnail(
+          imageUrl:
+              HaulScope.of(context).engine.imageOf(record) ??
+              record.group?.imageUrl,
+        ),
         if (record.status != DownloadStatus.done)
           Positioned(
             left: 0,

@@ -50,6 +50,9 @@ class HaulStrings {
   String get empty => 'Nothing downloaded yet';
   String downloads(int count) => count == 1 ? '1 download' : '$count downloads';
 
+  /// A group's or a season's progress: `3 of 5 downloaded`.
+  String doneOf(int done, int total) => '$done of $total downloaded';
+
   /// How a section of a group is headed. The id as it is by default.
   String section(String id) => id;
 
@@ -157,6 +160,8 @@ class HaulStringsEs extends HaulStrings {
   String get empty => 'Todavía no descargaste nada';
   @override
   String downloads(int count) => count == 1 ? '1 descarga' : '$count descargas';
+  @override
+  String doneOf(int done, int total) => '$done de $total descargados';
 
   @override
   String deleteConfirm(String title) => '¿Eliminar «$title»?';

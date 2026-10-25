@@ -278,6 +278,10 @@ abstract class DownloadRecord with _$DownloadRecord {
 
     /// See [DownloadRequest.imageUrl].
     String? imageUrl,
+
+    /// A frame of the finished download, made when it came without
+    /// [imageUrl] (see `DownloadEngine.imageOf`): `work:thumbnail.jpg`.
+    String? frameLocator,
     required DownloadStatus status,
     DownloadError? error,
     @_SourceConverter() required SourceRequest source,
@@ -378,7 +382,9 @@ class DownloadRequest {
   /// one, in the order it was asked for.
   final num? order;
 
-  /// A picture to show it by: a poster, a thumbnail.
+  /// A picture to show it by: a poster, a thumbnail. Without one, the
+  /// engine takes a frame of the finished download (see
+  /// `DownloadEngine.imageOf`).
   final String? imageUrl;
 }
 

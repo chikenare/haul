@@ -93,6 +93,142 @@ class HaulRecordsBuilder extends StatelessWidget {
   }
 }
 
+/// Follows how far the group [groupId] is — or its [section] only.
+class HaulGroupProgressBuilder extends StatelessWidget {
+  const HaulGroupProgressBuilder({
+    super.key,
+    required this.groupId,
+    this.section,
+    required this.builder,
+  });
+
+  final String groupId;
+  final String? section;
+  final Widget Function(BuildContext context, GroupProgress progress) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    final engine = HaulScope.of(context).engine;
+    return HaulEngineBuilder<GroupProgress>(
+      identity: (engine, groupId, section),
+      stream: () => engine.watchGroupProgress(groupId, section: section),
+      current: () => engine.groupProgress(groupId, section: section),
+      builder: builder,
+    );
+  }
+}
+
+/// A group's state at a glance, like [HaulProgressIcon] for one download:
+/// a ring across its downloads, a pause, a check, an alert.
+class HaulGroupProgressIcon extends StatelessWidget {
+  const HaulGroupProgressIcon({
+    super.key,
+    required this.progress,
+    this.size = 24,
+  });
+
+  final GroupProgress progress;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaulTheme.of(context);
+    final color = theme.progressOf(context);
+    final Widget child;
+    if (progress.isDone) {
+      child = Icon(Icons.download_done, size: size);
+    } else if (progress.isActive || progress.isStopped) {
+      child = Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox.square(
+            dimension: size * 0.85,
+            child: CircularProgressIndicator(
+              value: progress.fraction,
+              strokeWidth: 2.5,
+              color: progress.isStopped && progress.failed > 0
+                  ? theme.errorOf(context)
+                  : color,
+              backgroundColor: color.withValues(alpha: 0.2),
+            ),
+          ),
+          if (progress.isStopped)
+            Icon(
+              progress.failed > 0 ? Icons.priority_high : Icons.pause,
+              size: size * 0.5,
+            ),
+        ],
+      );
+    } else {
+      // Nothing yet, or some done and the rest never asked for.
+      child = Icon(Icons.download_outlined, size: size);
+    }
+    return SizedBox.square(
+      dimension: size,
+      child: Center(child: child),
+    );
+  }
+}
+
+/// The download button of a show or a season ([section]): [onDownload]
+/// while nothing moves and nothing waits — the app enqueues what is
+/// missing its own way, and what is there already is left alone — then
+/// pause all while they move, and resume (or retry) all once they stopped.
+class HaulGroupDownloadButton extends StatelessWidget {
+  const HaulGroupDownloadButton({
+    super.key,
+    required this.groupId,
+    this.section,
+    required this.onDownload,
+    this.builder,
+  });
+
+  final String groupId;
+  final String? section;
+  final Future<void> Function() onDownload;
+
+  /// To draw it differently; [onPressed] does what the default would.
+  final Widget Function(
+    BuildContext context,
+    GroupProgress progress,
+    VoidCallback onPressed,
+  )?
+  builder;
+
+  @override
+  Widget build(BuildContext context) {
+    final engine = HaulScope.of(context).engine;
+    final strings = HaulScope.stringsOf(context);
+    return HaulGroupProgressBuilder(
+      groupId: groupId,
+      section: section,
+      builder: (context, progress) {
+        final (VoidCallback onPressed, String tooltip) = progress.isActive
+            ? (
+                () => engine.pauseGroup(groupId, section: section),
+                strings.pauseAll,
+              )
+            : progress.isStopped
+            ? (
+                () => engine.resumeGroup(groupId, section: section),
+                strings.resumeAll,
+              )
+            : (() => onDownload(), strings.download);
+        if (builder case final builder?) {
+          return builder(context, progress, onPressed);
+        }
+        return IconButton(
+          tooltip: progress.isEmpty
+              ? tooltip
+              : '$tooltip · ${strings.doneOf(progress.done, progress.total)}',
+          onPressed: onPressed,
+          icon: HaulGroupProgressIcon(progress: progress),
+        );
+      },
+    );
+  }
+}
+
 /// A group's row: its picture, its title, how many downloads it holds and
 /// how far along they are.
 class HaulGroupTile extends StatelessWidget {
@@ -103,30 +239,28 @@ class HaulGroupTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final engine = HaulScope.of(context).engine;
     final strings = HaulScope.stringsOf(context);
     final theme = HaulTheme.of(context);
     final text = Theme.of(context).textTheme;
-    return HaulRecordsBuilder(
-      ids: group.ids,
-      builder: (context, records) {
-        final active = records.where((r) => r.status != DownloadStatus.done);
-        final total = records.fold<int>(
-          0,
-          (sum, r) => sum + r.progress.totalBytes,
-        );
-        final done = records.where((r) => r.status == DownloadStatus.done);
-        final fraction = records.isEmpty ? null : done.length / records.length;
+    return HaulGroupProgressBuilder(
+      groupId: group.group.id,
+      builder: (context, progress) {
+        final image =
+            group.group.imageUrl ??
+            group.ids
+                .map(engine.byId)
+                .nonNulls
+                .map(engine.imageOf)
+                .nonNulls
+                .firstOrNull;
         return InkWell(
           onTap: onTap,
           child: Padding(
             padding: theme.tilePadding,
             child: Row(
               children: [
-                HaulThumbnail(
-                  imageUrl:
-                      group.group.imageUrl ??
-                      records.map((r) => r.imageUrl).nonNulls.firstOrNull,
-                ),
+                HaulThumbnail(imageUrl: image),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -141,19 +275,25 @@ class HaulGroupTile extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         [
-                          strings.downloads(records.length),
-                          if (total > 0) strings.bytes(total),
+                          if (progress.isDone)
+                            strings.downloads(progress.total)
+                          else
+                            strings.doneOf(progress.done, progress.total),
+                          if (progress.totalBytes > 0)
+                            strings.bytes(progress.totalBytes),
                         ].join(' · '),
                         style: text.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      if (active.isNotEmpty) ...[
+                      if (!progress.isDone) ...[
                         const SizedBox(height: 6),
                         LinearProgressIndicator(
-                          value: fraction,
+                          value: progress.fraction,
                           minHeight: 3,
-                          color: theme.progressOf(context),
+                          color: progress.isStopped && progress.failed > 0
+                              ? theme.errorOf(context)
+                              : theme.progressOf(context),
                         ),
                       ],
                     ],

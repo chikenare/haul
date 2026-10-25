@@ -180,6 +180,7 @@ class Env {
     ValueListenable<bool>? wifiOnly,
     WifiMonitor? wifi,
     SourceFetcher? fetcher,
+    ThumbnailGrabber? thumbnails,
     bool init = true,
   }) async {
     final engine = DownloadEngine(
@@ -196,6 +197,8 @@ class Env {
       hooks: hooks,
       wifiOnly: wifiOnly,
       wifi: wifi,
+      // No ffmpeg here: a frame is only taken when a test asks for it.
+      thumbnails: thumbnails,
     );
     addTearDown(engine.dispose);
     if (init) await engine.init();

@@ -34,11 +34,14 @@ dependencies:
     sdk: flutter
   haul:
     path: ../
+  path_provider: ^2.1.5
   shared_preferences: ^2.5.3
   video_player: ^2.10.0
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
+  integration_test:
+    sdk: flutter
   flutter_test:
     sdk: flutter
 

@@ -11,7 +11,13 @@
 - `HaulDestination` and `HaulOutputSink` (public, app only, picked folder).
 - `package:haul/widgets.dart`: scope, settings, strings (en/es), theme,
   actions and default widgets, all replaceable.
-- `example/` app.
+- `updateDetails` and re-enqueueing file older downloads in groups; group
+  actions and `groupProgress` by section; `HaulGroupDownloadButton`,
+  `HaulGroupProgressIcon`, `HaulGroupProgressBuilder`.
+- Thumbnails: without `imageUrl`, a frame of the finished download
+  (`ThumbnailGrabber`, `engine.imageOf`).
+- ffmpeg is exported from `package:haul/ffmpeg.dart`, not `haul.dart`.
+- `example/` app, with an integration test that downloads for real.
 
 ## 0.1.0
 

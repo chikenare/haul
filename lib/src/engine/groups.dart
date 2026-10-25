@@ -130,3 +130,102 @@ int compareSections(String? a, String? b) {
   if (bn != null) return 1;
   return compareNatural(a, b);
 }
+
+/// How far a set of downloads is — a group, or one section of it — for a
+/// season's button or a show's row.
+@immutable
+class GroupProgress {
+  const GroupProgress({
+    required this.total,
+    required this.done,
+    required this.active,
+    required this.paused,
+    required this.failed,
+    required this.bytes,
+    required this.totalBytes,
+    required this.fraction,
+  });
+
+  /// Of [records]: each download counts the same, so a short episode is
+  /// not drowned by a long one whose size is only an estimate.
+  factory GroupProgress.of(Iterable<DownloadRecord> records) {
+    var total = 0, done = 0, active = 0, paused = 0, failed = 0;
+    var bytes = 0, totalBytes = 0;
+    var sum = 0.0;
+    for (final r in records) {
+      total++;
+      bytes += r.progress.bytes;
+      totalBytes += r.progress.totalBytes;
+      switch (r.status) {
+        case DownloadStatus.done:
+          done++;
+          sum += 1;
+          continue;
+        case DownloadStatus.paused:
+          paused++;
+        case DownloadStatus.failed:
+          failed++;
+        case DownloadStatus.queued ||
+            DownloadStatus.resolving ||
+            DownloadStatus.downloading ||
+            DownloadStatus.assembling:
+          active++;
+      }
+      sum += r.progress.fraction ?? 0;
+    }
+    return GroupProgress(
+      total: total,
+      done: done,
+      active: active,
+      paused: paused,
+      failed: failed,
+      bytes: bytes,
+      totalBytes: totalBytes,
+      fraction: total == 0 ? 0 : sum / total,
+    );
+  }
+
+  final int total;
+  final int done;
+
+  /// Queued, preparing, downloading or finishing.
+  final int active;
+  final int paused;
+  final int failed;
+  final int bytes;
+  final int totalBytes;
+
+  /// 0–1 across the downloads.
+  final double fraction;
+
+  bool get isEmpty => total == 0;
+  bool get isDone => total > 0 && done == total;
+  bool get isActive => active > 0;
+
+  /// Nothing moving, and something to resume or retry.
+  bool get isStopped => active == 0 && (paused > 0 || failed > 0);
+
+  @override
+  bool operator ==(Object other) =>
+      other is GroupProgress &&
+      other.total == total &&
+      other.done == done &&
+      other.active == active &&
+      other.paused == paused &&
+      other.failed == failed &&
+      other.bytes == bytes &&
+      other.totalBytes == totalBytes &&
+      other.fraction == fraction;
+
+  @override
+  int get hashCode => Object.hash(
+    total,
+    done,
+    active,
+    paused,
+    failed,
+    bytes,
+    totalBytes,
+    fraction,
+  );
+}

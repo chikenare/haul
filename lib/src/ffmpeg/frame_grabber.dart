@@ -4,12 +4,13 @@ import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_new_min/return_code.dart';
 import 'package:flutter/foundation.dart';
+import 'package:haul/src/engine/extension_points.dart';
 import 'package:haul/src/ffmpeg/ffmpeg_kit_runner.dart';
 import 'package:haul/src/planner/assembly/mux_input.dart';
 
 /// Takes one frame of a video as its thumbnail, for downloads that come
 /// without a picture.
-class FrameGrabber {
+class FrameGrabber implements ThumbnailGrabber {
   const FrameGrabber();
 
   /// A minute in first — openings are often black or a logo — and from the
@@ -18,6 +19,7 @@ class FrameGrabber {
 
   /// Writes a JPEG to [outputPath] and answers whether it could; a
   /// thumbnail never fails a download. [video] may be a `content://` URI.
+  @override
   Future<bool> grab(MuxInput video, String outputPath) async {
     final output = File(outputPath);
     await output.parent.create(recursive: true);

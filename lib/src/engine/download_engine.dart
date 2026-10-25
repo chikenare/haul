@@ -15,6 +15,7 @@ import 'package:haul/src/engine/output_sinks.dart';
 import 'package:haul/src/engine/record_store.dart';
 import 'package:haul/src/engine/transfer_client.dart';
 import 'package:haul/src/ffmpeg/ffmpeg_kit_runner.dart';
+import 'package:haul/src/ffmpeg/frame_grabber.dart';
 import 'package:haul/src/planner/assembly/local_packager.dart';
 import 'package:haul/src/planner/assembly/mkv_args.dart';
 import 'package:haul/src/planner/assembly/mux_input.dart';
@@ -101,6 +102,7 @@ class DownloadEngine {
     ValueListenable<bool>? wifiOnly,
     WifiMonitor? wifi,
     EngineLogger logger = const PrintLogger(),
+    ThumbnailGrabber? thumbnails = const FrameGrabber(),
     TransferClient? transfer,
     SourceResolver resolver = const SourceResolver(),
     RecordStore? store,
@@ -113,6 +115,7 @@ class DownloadEngine {
        _wifiOnly = wifiOnly,
        _wifi = wifi,
        _logger = logger,
+       _thumbnails = thumbnails,
        _transfer = transfer ?? PluginTransferClient(),
        _resolver = resolver,
        _appSupport = appSupport ?? getApplicationSupportDirectory,
@@ -134,6 +137,10 @@ class DownloadEngine {
   /// fails the download as a network error.
   final WifiMonitor? _wifi;
   final EngineLogger _logger;
+
+  /// Takes a frame of a finished download that came without an image;
+  /// null: none is made.
+  final ThumbnailGrabber? _thumbnails;
   final TransferClient _transfer;
   final SourceResolver _resolver;
   final Future<Directory> Function() _appSupport;
@@ -365,6 +372,18 @@ class DownloadEngine {
   Stream<DownloadRecord?> watch(String id) =>
       watchAll().map((_) => _records[id]).distinct();
 
+  /// How far the group [groupId] is — or its [section] only.
+  GroupProgress groupProgress(String groupId, {String? section}) =>
+      GroupProgress.of([
+        for (final id in _idsOfGroup(groupId, section)) _records[id]!,
+      ]);
+
+  /// [groupProgress] now and whenever it changes.
+  Stream<GroupProgress> watchGroupProgress(String groupId, {String? section}) =>
+      watchAll()
+          .map((_) => groupProgress(groupId, section: section))
+          .distinct();
+
   /// [entries] now and whenever their shape changes.
   Stream<List<DownloadEntry>> watchEntries() =>
       watchAll().map((_) => entries).distinct(identical);
@@ -389,6 +408,19 @@ class DownloadEngine {
       );
     }
     return p.isAbsolute(locator) ? locator : null;
+  }
+
+  /// What to show a download by: the app's [DownloadRecord.imageUrl], or
+  /// the path of the frame taken of it once finished. Null while neither
+  /// is there.
+  String? imageOf(DownloadRecord record) {
+    if (record.imageUrl case final url?) return url;
+    final thumbnail = record.frameLocator;
+    if (thumbnail == null || !thumbnail.startsWith(_workPrefix)) return null;
+    return p.join(
+      _workDir(record.id).path,
+      thumbnail.substring(_workPrefix.length),
+    );
   }
 
   /// The subtitles a finished download keeps as files — the package's, or
@@ -427,6 +459,15 @@ class DownloadEngine {
     final existing = byKey(request.key);
 
     if (existing != null && existing.status != DownloadStatus.failed) {
+      // Asked again, it keeps what it is; how it is listed follows the
+      // request — so an app can file its older downloads in groups.
+      _updateDetails(
+        existing.id,
+        group: request.group,
+        section: request.section,
+        order: request.order,
+        imageUrl: request.imageUrl,
+      );
       return (id: existing.id, outcome: EnqueueOutcome.existing);
     }
 
@@ -468,6 +509,7 @@ class DownloadEngine {
             title: request.title,
             name: request.name,
             metadata: request.metadata,
+            frameLocator: null,
             group: request.group,
             section: request.section,
             order: request.order,
@@ -565,34 +607,42 @@ class DownloadEngine {
     unawaited(_pump());
   }
 
-  /// [pause] on every download of the group.
-  Future<void> pauseGroup(String groupId) async {
+  /// [pause] on every download of the group — or of its [section].
+  Future<void> pauseGroup(String groupId, {String? section}) async {
     await _whenReady();
-    for (final id in _idsOfGroup(groupId)) {
-      await pause(id);
-    }
+    // All at once: one still reading a source that does not answer must
+    // not keep the rest going.
+    await Future.wait([
+      for (final id in _idsOfGroup(groupId, section)) pause(id),
+    ]);
   }
 
-  /// [resume] on every paused download of the group, and [retry] on every
-  /// failed one.
-  Future<void> resumeGroup(String groupId) async {
+  /// [resume] on every paused download of the group (or of its
+  /// [section]), and [retry] on every failed one.
+  Future<void> resumeGroup(String groupId, {String? section}) async {
     await _whenReady();
-    for (final id in _idsOfGroup(groupId)) {
+    for (final id in _idsOfGroup(groupId, section)) {
       await _requeue(id);
     }
   }
 
-  /// [delete] on every download of the group.
-  Future<void> deleteGroup(String groupId, {bool keepOutput = false}) async {
+  /// [delete] on every download of the group — or of its [section].
+  Future<void> deleteGroup(
+    String groupId, {
+    String? section,
+    bool keepOutput = false,
+  }) async {
     await _whenReady();
-    for (final id in _idsOfGroup(groupId)) {
-      await delete(id, keepOutput: keepOutput);
-    }
+    await Future.wait([
+      for (final id in _idsOfGroup(groupId, section))
+        delete(id, keepOutput: keepOutput),
+    ]);
   }
 
-  List<String> _idsOfGroup(String groupId) => [
+  List<String> _idsOfGroup(String groupId, [String? section]) => [
     for (final r in _records.values)
-      if (r.group?.id == groupId) r.id,
+      if (r.group?.id == groupId && (section == null || r.section == section))
+        r.id,
   ];
 
   /// Deletes everything not finished. Answers how many went. A title that
@@ -608,6 +658,44 @@ class DownloadEngine {
       await delete(id);
     }
     return pending.length;
+  }
+
+  /// Files a download under [group] and [section], at [order], with
+  /// [imageUrl] — only what is given changes. For downloads asked for
+  /// before the app grouped them: read their `metadata` and file them here.
+  Future<void> updateDetails(
+    String id, {
+    DownloadGroup? group,
+    String? section,
+    num? order,
+    String? imageUrl,
+  }) async {
+    await _whenReady();
+    _updateDetails(
+      id,
+      group: group,
+      section: section,
+      order: order,
+      imageUrl: imageUrl,
+    );
+  }
+
+  void _updateDetails(
+    String id, {
+    DownloadGroup? group,
+    String? section,
+    num? order,
+    String? imageUrl,
+  }) {
+    final record = _records[id];
+    if (record == null) return;
+    final updated = record.copyWith(
+      group: group ?? record.group,
+      section: section ?? record.section,
+      order: order ?? record.order,
+      imageUrl: imageUrl ?? record.imageUrl,
+    );
+    if (updated != record) _put(updated);
   }
 
   /// Replaces the app's data on a record.
@@ -1638,6 +1726,63 @@ class DownloadEngine {
 
   /// Answers whether the record was still there to finish.
   bool _finish(
+    String id, {
+    required String locator,
+    required OutputKind kind,
+    required int bytes,
+  }) {
+    final finished = _transitionToDone(
+      id,
+      locator: locator,
+      kind: kind,
+      bytes: bytes,
+    );
+    if (finished) unawaited(_makeThumbnail(id));
+    return finished;
+  }
+
+  /// A frame of [id] as its picture, when the app gave it none. In the
+  /// download's folder, after the queue moved on: it never holds a download
+  /// back nor fails one.
+  Future<void> _makeThumbnail(String id) async {
+    final grabber = _thumbnails;
+    final record = _records[id];
+    if (grabber == null || record == null || record.imageUrl != null) return;
+    // Taken already, and still there: an export clears the folder.
+    if (imageOf(record) case final made? when await File(made).exists()) {
+      return;
+    }
+    final video = switch (record.outputKind) {
+      OutputKind.package => MuxInput(
+        path: p.join(_workDir(id).path, _master),
+        kind: TrackKind.video,
+        isHlsPlaylist: true,
+      ),
+      _ => switch (outputPath(record) ?? record.outputLocator) {
+        final path? when p.isAbsolute(path) || path.startsWith('content://') =>
+          MuxInput(path: path, kind: TrackKind.video),
+        _ => null,
+      },
+    };
+    if (video == null) return;
+    try {
+      final output = p.join(_workDir(id).path, _thumbnailFile);
+      if (!await grabber.grab(video, output)) return;
+      final current = _records[id];
+      if (_disposed ||
+          current == null ||
+          current.status != DownloadStatus.done) {
+        return;
+      }
+      _put(current.copyWith(frameLocator: '$_workPrefix$_thumbnailFile'));
+    } on Object catch (e, st) {
+      _logger.error(e, st, context: {'id': id, 'step': 'thumbnail'});
+    }
+  }
+
+  static const _thumbnailFile = 'thumbnail.jpg';
+
+  bool _transitionToDone(
     String id, {
     required String locator,
     required OutputKind kind,

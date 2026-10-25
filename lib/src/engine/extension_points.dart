@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
 import 'package:haul/src/engine/model.dart';
+import 'package:haul/src/planner/assembly/mux_input.dart';
 import 'package:haul/src/planner/sources/source_request.dart';
 import 'package:haul/src/planner/track_criteria.dart';
 
@@ -80,6 +81,15 @@ abstract interface class ReservingOutputSink implements OutputSink {
 
   /// Whether [locator] holds a published file.
   Future<bool> holds(String locator);
+}
+
+/// Makes a picture of a finished download that came without one
+/// (`DownloadRequest.imageUrl`). `FrameGrabber` (ffmpeg) by default.
+abstract interface class ThumbnailGrabber {
+  /// Writes a JPEG of [video] to [outputPath]; answers whether it could.
+  /// Never throws for a video it cannot read: a thumbnail never fails a
+  /// download.
+  Future<bool> grab(MuxInput video, String outputPath);
 }
 
 /// Runs ffmpeg with [args] (see `MkvArgs`). The engine does not depend on

@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:haul/src/android/haul_android.dart';
 import 'package:haul/src/engine/extension_points.dart';
 import 'package:haul/src/engine/transfer_client.dart';
+import 'package:haul/src/planner/assembly/mux_input.dart';
 import 'package:haul/src/planner/errors.dart';
 import 'package:haul/src/planner/sources/source_fetcher.dart';
 import 'package:path/path.dart' as p;
@@ -373,5 +374,24 @@ class FakeHaulAndroid implements HaulAndroid {
   @override
   Future<void> requestIgnoreBatteryOptimizations() async {
     batteryRequests++;
+  }
+}
+
+/// Writes a small JPEG where a frame would go; [fail] plays a video it
+/// cannot read.
+class FakeThumbnails implements ThumbnailGrabber {
+  FakeThumbnails({this.fail = false});
+
+  final bool fail;
+  final grabbed = <MuxInput>[];
+
+  @override
+  Future<bool> grab(MuxInput video, String outputPath) async {
+    grabbed.add(video);
+    if (fail) return false;
+    final file = File(outputPath);
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes([0xFF, 0xD8, 0xFF]);
+    return true;
   }
 }
