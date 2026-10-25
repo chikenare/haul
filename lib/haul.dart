@@ -6,6 +6,7 @@ export 'package:haul/planner.dart';
 export 'src/engine/download_engine.dart' show DownloadEngine, EngineConfig;
 export 'src/engine/errors.dart';
 export 'src/engine/extension_points.dart';
+export 'src/engine/groups.dart' hide compareSections;
 export 'src/engine/model.dart';
 export 'src/engine/output_sinks.dart';
 export 'src/engine/record_store.dart';

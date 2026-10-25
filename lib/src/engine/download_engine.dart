@@ -5,9 +5,11 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:background_downloader/background_downloader.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:haul/src/engine/errors.dart';
 import 'package:haul/src/engine/extension_points.dart';
+import 'package:haul/src/engine/groups.dart';
 import 'package:haul/src/engine/model.dart';
 import 'package:haul/src/engine/output_sinks.dart';
 import 'package:haul/src/engine/record_store.dart';
@@ -300,6 +302,30 @@ class DownloadEngine {
   /// [records], until the next change to [_records].
   List<DownloadRecord>? _snapshot;
 
+  /// [records] as a list of loose downloads and groups (see
+  /// [downloadEntries]). The same list is answered until its shape changes
+  /// — a download added, removed or moved — not on every progress tick.
+  List<DownloadEntry> get entries {
+    final records = this.records;
+    if (identical(records, _entriesOf)) return _entries;
+    _entriesOf = records;
+    final fresh = downloadEntries(records);
+    if (!const ListEquality<DownloadEntry>().equals(fresh, _entries)) {
+      _entries = List.unmodifiable(fresh);
+    }
+    return _entries;
+  }
+
+  List<DownloadEntry> _entries = const [];
+  List<DownloadRecord>? _entriesOf;
+
+  /// The group [groupId] as listed in [entries]; null once it has no
+  /// downloads.
+  GroupedDownloads? group(String groupId) => entries
+      .whereType<GroupedDownloads>()
+      .where((g) => g.group.id == groupId)
+      .firstOrNull;
+
   DownloadRecord? byId(String id) => _records[id];
 
   /// Only on Wi-Fi and not on it: nothing starts, and what was downloading
@@ -337,6 +363,14 @@ class DownloadEngine {
   /// One record now and after every change, until it is deleted (null).
   Stream<DownloadRecord?> watch(String id) =>
       watchAll().map((_) => _records[id]).distinct();
+
+  /// [entries] now and whenever their shape changes.
+  Stream<List<DownloadEntry>> watchEntries() =>
+      watchAll().map((_) => entries).distinct(identical);
+
+  /// [group] now and whenever its shape changes.
+  Stream<GroupedDownloads?> watchGroup(String groupId) =>
+      watchEntries().map((_) => group(groupId)).distinct();
 
   /// [waitingForWifi] now and whenever it changes.
   Stream<bool> watchWaitingForWifi() =>
@@ -433,6 +467,10 @@ class DownloadEngine {
             title: request.title,
             name: request.name,
             metadata: request.metadata,
+            group: request.group,
+            section: request.section,
+            order: request.order,
+            imageUrl: request.imageUrl,
             status: DownloadStatus.queued,
             error: null,
             source: request.source,
@@ -525,6 +563,36 @@ class DownloadEngine {
     await _deleteQuietly(_workDir(id));
     unawaited(_pump());
   }
+
+  /// [pause] on every download of the group.
+  Future<void> pauseGroup(String groupId) async {
+    await _whenReady();
+    for (final id in _idsOfGroup(groupId)) {
+      await pause(id);
+    }
+  }
+
+  /// [resume] on every paused download of the group, and [retry] on every
+  /// failed one.
+  Future<void> resumeGroup(String groupId) async {
+    await _whenReady();
+    for (final id in _idsOfGroup(groupId)) {
+      await _requeue(id);
+    }
+  }
+
+  /// [delete] on every download of the group.
+  Future<void> deleteGroup(String groupId, {bool keepOutput = false}) async {
+    await _whenReady();
+    for (final id in _idsOfGroup(groupId)) {
+      await delete(id, keepOutput: keepOutput);
+    }
+  }
+
+  List<String> _idsOfGroup(String groupId) => [
+    for (final r in _records.values)
+      if (r.group?.id == groupId) r.id,
+  ];
 
   /// Deletes everything not finished. Answers how many went. A title that
   /// finished once and is being exported, or failed publishing its export,

@@ -37,6 +37,20 @@ Map<String, dynamic> _$OutputNameToJson(_OutputName instance) =>
       'folders': instance.folders,
     };
 
+_DownloadGroup _$DownloadGroupFromJson(Map<String, dynamic> json) =>
+    _DownloadGroup(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      imageUrl: json['imageUrl'] as String?,
+    );
+
+Map<String, dynamic> _$DownloadGroupToJson(_DownloadGroup instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'title': instance.title,
+      'imageUrl': instance.imageUrl,
+    };
+
 _DownloadProgress _$DownloadProgressFromJson(Map<String, dynamic> json) =>
     _DownloadProgress(
       donePieces: (json['donePieces'] as num?)?.toInt() ?? 0,
@@ -76,6 +90,12 @@ _DownloadRecord _$DownloadRecordFromJson(Map<String, dynamic> json) =>
       title: json['title'] as String,
       name: OutputName.fromJson(json['name'] as Map<String, dynamic>),
       metadata: json['metadata'] as Map<String, dynamic>? ?? const {},
+      group: json['group'] == null
+          ? null
+          : DownloadGroup.fromJson(json['group'] as Map<String, dynamic>),
+      section: json['section'] as String?,
+      order: json['order'] as num?,
+      imageUrl: json['imageUrl'] as String?,
       status: $enumDecode(_$DownloadStatusEnumMap, json['status']),
       error: json['error'] == null
           ? null
@@ -115,6 +135,10 @@ Map<String, dynamic> _$DownloadRecordToJson(_DownloadRecord instance) =>
       'title': instance.title,
       'name': instance.name.toJson(),
       'metadata': instance.metadata,
+      'group': instance.group?.toJson(),
+      'section': instance.section,
+      'order': instance.order,
+      'imageUrl': instance.imageUrl,
       'status': _$DownloadStatusEnumMap[instance.status]!,
       'error': instance.error?.toJson(),
       'source': const _SourceConverter().toJson(instance.source),

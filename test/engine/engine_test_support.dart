@@ -229,6 +229,9 @@ DownloadRequest request({
   Map<String, String>? subtitles,
   DownloadPlan? plan,
   Map<String, Object?> metadata = const {},
+  DownloadGroup? group,
+  String? section,
+  num? order,
 }) => DownloadRequest(
   key: key,
   title: title,
@@ -243,6 +246,9 @@ DownloadRequest request({
   plan: plan,
   output: output,
   metadata: metadata,
+  group: group,
+  section: section,
+  order: order,
 );
 
 /// Answers a fixed source, counts the calls, or throws [error].

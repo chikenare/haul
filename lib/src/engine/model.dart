@@ -163,6 +163,22 @@ abstract class OutputName with _$OutputName {
       _$OutputNameFromJson(json);
 }
 
+/// What several downloads belong to, as the app wants them shown together:
+/// a show, an album, a course. Records with the same [id] are listed as one
+/// entry (see `DownloadEngine.entries`); the newest record's [title] and
+/// [imageUrl] are the group's.
+@freezed
+abstract class DownloadGroup with _$DownloadGroup {
+  const factory DownloadGroup({
+    required String id,
+    required String title,
+    String? imageUrl,
+  }) = _DownloadGroup;
+
+  factory DownloadGroup.fromJson(Map<String, Object?> json) =>
+      _$DownloadGroupFromJson(json);
+}
+
 @freezed
 abstract class DownloadProgress with _$DownloadProgress {
   const DownloadProgress._();
@@ -250,6 +266,18 @@ abstract class DownloadRecord with _$DownloadRecord {
 
     /// The app's own data, kept and handed back as is.
     @Default({}) Map<String, Object?> metadata,
+
+    /// See [DownloadRequest.group].
+    DownloadGroup? group,
+
+    /// See [DownloadRequest.section].
+    String? section,
+
+    /// See [DownloadRequest.order].
+    num? order,
+
+    /// See [DownloadRequest.imageUrl].
+    String? imageUrl,
     required DownloadStatus status,
     DownloadError? error,
     @_SourceConverter() required SourceRequest source,
@@ -318,6 +346,10 @@ class DownloadRequest {
     this.plan,
     this.output = OutputMode.package,
     this.metadata = const {},
+    this.group,
+    this.section,
+    this.order,
+    this.imageUrl,
   });
 
   /// See [DownloadRecord.key].
@@ -333,6 +365,21 @@ class DownloadRequest {
   final DownloadPlan? plan;
   final OutputMode output;
   final Map<String, Object?> metadata;
+
+  /// What this is listed under together with others; null: on its own.
+  final DownloadGroup? group;
+
+  /// A part of [group] (a season): its records are listed together, the
+  /// sections in their natural order (`2` before `10`). The app labels it,
+  /// so no translated text is stored.
+  final String? section;
+
+  /// Where it goes within its [section] (an episode's number); without
+  /// one, in the order it was asked for.
+  final num? order;
+
+  /// A picture to show it by: a poster, a thumbnail.
+  final String? imageUrl;
 }
 
 enum EnqueueOutcome {
