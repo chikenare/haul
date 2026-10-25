@@ -4,9 +4,10 @@ library;
 
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:background_downloader/background_downloader.dart';
+import 'package:flutter/services.dart';
+import 'package:haul/src/android/haul_android.dart';
 import 'package:haul/src/engine/extension_points.dart';
 import 'package:haul/src/engine/transfer_client.dart';
 import 'package:haul/src/planner/errors.dart';
@@ -301,4 +302,76 @@ class RecordingLogger implements EngineLogger {
     StackTrace? stackTrace, {
     Map<String, Object?>? context,
   }) => errors.add(error);
+}
+
+/// Android's side as a test sets it: folders that can or cannot be
+/// written, files that exist, the battery saver's answer.
+class FakeHaulAndroid implements HaulAndroid {
+  FakeHaulAndroid({this.isAndroid = true, this.batteryFree = false});
+
+  @override
+  final bool isAndroid;
+
+  bool batteryFree;
+  int batteryRequests = 0;
+
+  /// What [pickFolder] answers next.
+  HaulFolder? picked;
+
+  /// Folders [saveToFolder] can no longer write to.
+  final revoked = <String>{};
+
+  /// `(folderUri, relativeName)` of every save.
+  final saved = <(String, String)>[];
+  final deleted = <String>[];
+
+  /// URIs that [exists] answers true for; saves add theirs.
+  final existing = <String>{};
+
+  @override
+  Future<HaulFolder?> pickFolder({String? initialUri}) async => picked;
+
+  @override
+  Future<HaulFolder?> describeFolder(String uri) async => revoked.contains(uri)
+      ? null
+      : HaulFolder(uri: uri, name: Uri.decodeComponent(uri.split('/').last));
+
+  @override
+  Future<String> saveToFolder({
+    required String folderUri,
+    required File file,
+    required String relativeName,
+  }) async {
+    if (revoked.contains(folderUri)) {
+      throw PlatformException(code: 'io', message: 'no grant');
+    }
+    saved.add((folderUri, relativeName));
+    await file.delete();
+    final uri = '$folderUri/document/${Uri.encodeComponent(relativeName)}';
+    existing.add(uri);
+    return uri;
+  }
+
+  @override
+  Future<bool> exists(String uri) async => existing.contains(uri);
+
+  @override
+  Future<void> delete(String uri) async {
+    deleted.add(uri);
+    existing.remove(uri);
+  }
+
+  @override
+  Future<String?> pathOf(String uri) async => null;
+
+  @override
+  Future<int?> freeBytes() async => null;
+
+  @override
+  Future<bool> isIgnoringBatteryOptimizations() async => batteryFree;
+
+  @override
+  Future<void> requestIgnoreBatteryOptimizations() async {
+    batteryRequests++;
+  }
 }

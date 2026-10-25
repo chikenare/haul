@@ -3,10 +3,12 @@
 library;
 
 export 'package:haul/planner.dart';
+export 'src/android/haul_android.dart';
 export 'src/engine/download_engine.dart' show DownloadEngine, EngineConfig;
 export 'src/engine/errors.dart';
 export 'src/engine/extension_points.dart';
 export 'src/engine/groups.dart' hide compareSections;
+export 'src/engine/haul_output_sink.dart';
 export 'src/engine/model.dart';
 export 'src/engine/output_sinks.dart';
 export 'src/engine/record_store.dart';

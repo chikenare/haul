@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      REQUEST_IGNORE_BATTERY_OPTIMIZATIONS is not declared here: Google Play
+      restricts it, so an app opts in by adding it to its own manifest. Without
+      it, asking opens the system's battery settings list instead.
+    -->
+</manifest>

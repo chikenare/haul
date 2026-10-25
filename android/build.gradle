@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.library'
+}
+
+// AGP 9 builds Kotlin itself; older ones (or builtInKotlin=false) need the
+// Kotlin plugin applied, as background_downloader does.
+def agpMajor = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize('.')[0] as int
+def isBuiltInKotlinFalse = project.hasProperty('builtInKotlin') && (project.property('builtInKotlin') == false || project.property('builtInKotlin') == 'false')
+if (agpMajor < 9 || isBuiltInKotlinFalse) {
+    apply plugin: ['kotlin', 'android'].join('-')
+}
+
+group 'dev.chikenare.haul'
+version '1.0-SNAPSHOT'
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+android {
+    namespace 'dev.chikenare.haul'
+    compileSdk 36
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
+        minSdkVersion 24
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}

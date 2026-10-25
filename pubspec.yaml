@@ -34,3 +34,10 @@ dev_dependencies:
   json_serializable: ^6.11.0
   path_provider_platform_interface: ^2.1.2
   plugin_platform_interface: ^2.1.8
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.chikenare.haul
+        pluginClass: HaulPlugin
