@@ -1,0 +1,159 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:haul/haul.dart';
+import 'package:haul/widgets.dart';
+
+DownloadRecord _record(
+  DownloadStatus status, {
+  DownloadError? error,
+  OutputKind? outputKind,
+  String? outputLocator,
+  DownloadProgress progress = const DownloadProgress(),
+}) => DownloadRecord(
+  id: 'd1',
+  key: 'k',
+  title: 'Loki',
+  name: const OutputName(baseName: 'Loki'),
+  status: status,
+  error: error,
+  outputKind: outputKind,
+  outputLocator: outputLocator,
+  progress: progress,
+  source: const SourceRequest(url: 'https://cdn.example/a.mpd'),
+  createdAt: DateTime.utc(2026),
+  updatedAt: DateTime.utc(2026),
+);
+
+void main() {
+  group('DownloadActions', () {
+    test('the primary action follows the status', () {
+      HaulAction? primary(DownloadStatus s) =>
+          DownloadActions.of(_record(s)).primary;
+
+      expect(primary(DownloadStatus.queued), HaulAction.pause);
+      expect(primary(DownloadStatus.resolving), HaulAction.pause);
+      expect(primary(DownloadStatus.downloading), HaulAction.pause);
+      expect(primary(DownloadStatus.paused), HaulAction.resume);
+      expect(primary(DownloadStatus.failed), HaulAction.retry);
+      expect(primary(DownloadStatus.done), HaulAction.play);
+      expect(primary(DownloadStatus.assembling), isNull);
+    });
+
+    test('no retry for an error the app says a retry would not change', () {
+      final actions = DownloadActions.of(
+        _record(
+          DownloadStatus.failed,
+          error: const DownloadError(code: 'quota'),
+        ),
+        canRetry: (e) => e.code != 'quota',
+      );
+      expect(actions.primary, isNull);
+      expect(actions.menu, [HaulAction.delete]);
+    });
+
+    test('a finished package can become a file', () {
+      final actions = DownloadActions.of(
+        _record(
+          DownloadStatus.done,
+          outputKind: OutputKind.package,
+          outputLocator: 'work:master.m3u8',
+        ),
+      );
+      expect(actions.menu, [
+        HaulAction.play,
+        HaulAction.export,
+        HaulAction.delete,
+      ]);
+    });
+
+    test('a published file can leave the list and stay', () {
+      final actions = DownloadActions.of(
+        _record(
+          DownloadStatus.done,
+          outputKind: OutputKind.file,
+          outputLocator: 'content://media/1',
+        ),
+      );
+      expect(actions.menu, [
+        HaulAction.play,
+        HaulAction.removeKeepFile,
+        HaulAction.delete,
+      ]);
+    });
+  });
+
+  group('downloadSummary', () {
+    const en = HaulStrings();
+
+    test('status, percent and bytes while downloading', () {
+      final summary = downloadSummary(
+        _record(
+          DownloadStatus.downloading,
+          progress: const DownloadProgress(
+            bytes: 1200000000,
+            totalBytes: 3000000000,
+          ),
+        ),
+        en,
+      );
+      expect(summary, 'Downloading · 40% · 1.2 GB / 3.0 GB');
+    });
+
+    test('waiting for Wi-Fi replaces queued', () {
+      expect(
+        downloadSummary(
+          _record(DownloadStatus.queued),
+          en,
+          waitingForWifi: true,
+        ),
+        'Waiting for Wi-Fi',
+      );
+    });
+
+    test('a finished package says it is in the app', () {
+      expect(
+        downloadSummary(
+          _record(
+            DownloadStatus.done,
+            outputKind: OutputKind.package,
+            progress: const DownloadProgress(totalBytes: 500000000),
+          ),
+          en,
+        ),
+        'In the app · 500 MB',
+      );
+    });
+  });
+
+  group('HaulStrings', () {
+    test('Spanish for es, English otherwise', () {
+      expect(
+        HaulStrings.forLocale(const Locale('es', 'AR')),
+        isA<HaulStringsEs>(),
+      );
+      expect(HaulStrings.forLocale(const Locale('fr')).download, 'Download');
+    });
+
+    test('an app overrides what it wants, app codes included', () {
+      const strings = _AppStrings();
+      expect(strings.download, 'Bajar');
+      expect(strings.pause, 'Pausar');
+      expect(strings.error(const DownloadError(code: 'quota')), 'Sin cupo');
+      expect(
+        strings.error(const DownloadError(code: DownloadErrorCode.noSpace)),
+        'No queda espacio en el dispositivo.',
+      );
+    });
+  });
+}
+
+class _AppStrings extends HaulStringsEs {
+  const _AppStrings();
+
+  @override
+  String get download => 'Bajar';
+
+  @override
+  String error(DownloadError error) =>
+      error.code == 'quota' ? 'Sin cupo' : super.error(error);
+}
