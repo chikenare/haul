@@ -25,6 +25,27 @@ void main() {
       if (t.kind == TrackKind.audio) t.language,
   ];
 
+  test('planning afresh keeps a write of the record in flight', () async {
+    // In memory: the engine writes no record file of its own over the one
+    // played here.
+    final engine = await env.engine();
+    final first = await engine.enqueue(request(url: '$cdn/missing.mpd'));
+    await waitForStatus(engine, first.id, DownloadStatus.failed);
+
+    // What a save of the record leaves for a moment, and a stale piece.
+    final work = Directory(p.join(env.dir.path, 'haul', first.id));
+    await work.create(recursive: true);
+    final temp = File(p.join(work.path, 'record.json.tmp'));
+    await temp.writeAsString('{}');
+    final stale = File(p.join(work.path, 'stale.bin'));
+    await stale.writeAsString('x');
+
+    await engine.enqueue(request());
+    await waitUntil(() => !stale.existsSync());
+    await waitForStatus(engine, first.id, DownloadStatus.downloading);
+    expect(temp.existsSync() && temp.readAsStringSync() == '{}', isTrue);
+  });
+
   group('enqueue', () {
     test('the same key twice finds the first', () async {
       final engine = await env.engine();

@@ -1783,9 +1783,13 @@ class DownloadEngine {
   Future<void> _wipePieces(String id) async {
     final work = _workDir(id);
     if (!await work.exists()) return;
-    final record = p.normalize(p.join(work.path, JsonRecordStore.recordFile));
     await for (final entity in work.list()) {
-      if (p.normalize(entity.path) != record) await _deleteQuietly(entity);
+      // The record, and the temporary file of a write of it in flight:
+      // deleting that one fails the write's rename.
+      if (p.basename(entity.path).startsWith(JsonRecordStore.recordFile)) {
+        continue;
+      }
+      await _deleteQuietly(entity);
     }
   }
 
