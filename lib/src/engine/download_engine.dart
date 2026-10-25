@@ -14,6 +14,7 @@ import 'package:haul/src/engine/model.dart';
 import 'package:haul/src/engine/output_sinks.dart';
 import 'package:haul/src/engine/record_store.dart';
 import 'package:haul/src/engine/transfer_client.dart';
+import 'package:haul/src/ffmpeg/ffmpeg_kit_runner.dart';
 import 'package:haul/src/planner/assembly/local_packager.dart';
 import 'package:haul/src/planner/assembly/mkv_args.dart';
 import 'package:haul/src/planner/assembly/mux_input.dart';
@@ -107,7 +108,7 @@ class DownloadEngine {
   }) : _refresher = refresher,
        _criteria = criteria,
        _sink = sink,
-       _ffmpeg = ffmpeg,
+       _ffmpeg = ffmpeg ?? const FfmpegKitRunner(),
        _hooks = hooks,
        _wifiOnly = wifiOnly,
        _wifi = wifi,
@@ -121,7 +122,7 @@ class DownloadEngine {
   final SourceRefresher? _refresher;
   final CriteriaProvider? _criteria;
   final OutputSink _sink;
-  final FfmpegRunner? _ffmpeg;
+  final FfmpegRunner _ffmpeg;
   final EngineHooks _hooks;
 
   /// The user's "only on Wi-Fi", read when each piece is handed over and
@@ -1497,9 +1498,6 @@ class DownloadEngine {
 
       if (plan.needsMux) {
         final ffmpeg = _ffmpeg;
-        if (ffmpeg == null) {
-          throw const FfmpegException('No ffmpeg was given to the engine');
-        }
         final partial = File(p.join(work.path, '.partial.${plan.extension}'));
         await ffmpeg.run(
           MkvArgs.build(
