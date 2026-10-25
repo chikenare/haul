@@ -1,3 +1,18 @@
+## Unreleased
+
+- Groups: `DownloadGroup`, `section`, `order` and `imageUrl` on requests and
+  records (optional, old records read the same); `engine.entries`,
+  `watchEntries`, `group`/`watchGroup`, `pauseGroup`, `resumeGroup`,
+  `deleteGroup`.
+- ffmpeg inside: `FfmpegKitRunner` is the engine's default; `FrameGrabber`
+  for thumbnails.
+- Android plugin (`HaulAndroid`): SAF folders, `content://` files, battery
+  saver.
+- `HaulDestination` and `HaulOutputSink` (public, app only, picked folder).
+- `package:haul/widgets.dart`: scope, settings, strings (en/es), theme,
+  actions and default widgets, all replaceable.
+- `example/` app.
+
 ## 0.1.0
 
 - First release of `haul`, which absorbs `media_planner` as its

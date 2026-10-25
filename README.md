@@ -1,7 +1,7 @@
 # haul
 
-Offline downloads of HLS, DASH and plain-file video for Flutter apps. Two
-layers in one package:
+Offline downloads of HLS, DASH and plain-file video for Flutter apps, from
+the engine to the widgets. Layers in one package, each usable on its own:
 
 - **Planner** (`package:haul/planner.dart`, pure Dart) — reads a
   source, tells HLS, DASH and plain files apart by content (never the URL),
@@ -13,19 +13,24 @@ layers in one package:
   exports the planner) — the queue on top: one `DownloadRecord` per title,
   every piece fetched through `background_downloader`, progress,
   pause/resume/retry, fresh links when one runs out, and the finished package
-  or file handed to wherever the app keeps it.
+  or file handed to wherever the app keeps it. Downloads can be grouped (a
+  show and its seasons). It brings its own ffmpeg (ffmpeg-kit, minimal build)
+  and its own Android side: folders picked with SAF, the public Downloads
+  through MediaStore, and the battery saver.
+- **Widgets** (`package:haul/widgets.dart`) — rows, buttons, a grouped list,
+  the first-download sheet and settings rows, following the app's theme and
+  replaceable piece by piece (see [Widgets](#widgets)).
 
 ## What each app plugs in
 
-Nothing here knows about an app's API, account or ffmpeg build. The engine
-takes:
+Nothing here knows about an app's API or account. The engine takes:
 
 | Piece | What it answers |
 | --- | --- |
 | `SourceRefresher` | A fresh link (`RefreshedSource`) for a record whose link is about to expire (`expiresAt` within `EngineConfig.linkMargin`) or was refused. Throw `RefreshException(code, message)` to fail the download with the app's own code. |
 | `CriteriaProvider` | The `TrackCriteria` of a `TrackChoice.policy()` download, read when its turn comes — a queued season follows the settings of that moment. |
-| `OutputSink` | Where a finished file goes. `PrivateSink` (default) keeps it in the download's folder; `DirectorySink` moves it into a user folder under `OutputName.folders`, never over another file (`Name (2).ext`). Packages always stay private. |
-| `FfmpegRunner` | Runs `MkvArgs` with the app's own ffmpeg. Only needed when a download becomes one file from several tracks. |
+| `OutputSink` | Where a finished file goes. `HaulOutputSink` follows a `HaulDestination` the user picks — the public Downloads (MediaStore on Android), only in the app, or a folder of theirs (SAF on Android) — read at each publish, and falls back to public and then private when a folder can no longer be written. `PrivateSink` (default) keeps it in the download's folder; `DirectorySink` moves it into a folder by path, never over another file (`Name (2).ext`). Packages always stay private. |
+| `FfmpegRunner` | Runs `MkvArgs`. `FfmpegKitRunner` by default; pass another for another build. |
 | `EngineHooks` | `onWholeFileTask`: dress the task of a file fetched in one request (a notification, which on Android keeps a long one in the foreground). |
 | `wifiOnly` | A `ValueListenable<bool>`: the user's "only on Wi-Fi", followed while it changes. Null: never. |
 | `WifiMonitor` | Whether the device is on Wi-Fi now, and when that changes (the app's connectivity package). Tells a Wi-Fi drop from a network error, and when to go on. |
@@ -104,6 +109,24 @@ or ffmpeg.
   `unavailable`, `corrupt`, `publish_failed`, `unknown`) or the app's own from
   a `RefreshException`. The app localizes it.
 
+- **Groups.** A request's `group` (`DownloadGroup(id, title, imageUrl)`),
+  `section` and `order` put it with others: `engine.entries` lists loose
+  downloads and groups newest first, each group in sections in their natural
+  order (`2` before `10`) and by `order` within. The list keeps its identity
+  while only progress changes, so a list built on `watchEntries()` rebuilds
+  when a download comes, goes or moves, and each row follows its own record.
+  `pauseGroup`, `resumeGroup` and `deleteGroup` act on all of one.
+
+### Android
+
+haul is a plugin with an Android side (`HaulAndroid`, channel
+`haul/android`): picked folders through SAF (`pickFolder`, `saveToFolder`,
+with subfolders), checking and deleting `content://` files, the path behind
+a URI, free space, and the battery saver. `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+is not declared by the plugin — Google Play restricts it. An app that ships
+outside Play adds it to its manifest and gets the system's yes/no dialog;
+without it, asking opens the battery settings list.
+
 ### Known limits
 
 - `DirectorySink` answers absolute paths as locators. On iOS the app's
@@ -166,6 +189,56 @@ final error = await engine.export(id); // a finished package → one file
 To let the user pick the tracks first, resolve and plan with the planner and
 hand both over: `DownloadRequest(…, tracks: TrackChoice.selection(selection),
 plan: plan)`.
+
+## Widgets
+
+```dart
+import 'package:haul/widgets.dart';
+
+final settings = HaulSettingsController(
+  HaulSettings.fromJson(stored), // the app keeps them
+  (s) => store(s.toJson()),
+);
+final engine = DownloadEngine(
+  sink: HaulOutputSink(
+    destination: () async => settings.value.destination,
+    subfolder: 'MyApp/Videos',
+  ),
+  wifiOnly: settings.wifiOnly,
+  …
+);
+
+HaulScope(
+  engine: engine,
+  settings: settings,
+  strings: const MyStrings(), // optional; en/es built in
+  canRetry: (e) => e.code != 'quota', // the app's codes a retry won't fix
+  pickDirectory: myDesktopPicker, // desktop only; Android uses SAF
+  child: MaterialApp(…),
+);
+```
+
+- **Default widgets**: `HaulDownloadList` (grouped, `onOpenGroup`),
+  `HaulGroupView` + `HaulGroupActions`, `HaulDownloadTile`,
+  `HaulDownloadButton(downloadKey, onDownload)`, `HaulProgressIcon`,
+  `HaulActionsMenu`, `HaulThumbnail`; `ensureHaulSetup(context)` before the
+  first download; `HaulFormatTile`, `HaulDestinationTile`,
+  `HaulWifiOnlyTile`, `HaulBatteryTile` for a settings page.
+- **Replacing parts**: every row takes builders (`itemBuilder`,
+  `groupBuilder`, `sectionBuilder`, `leading`, `title`, `subtitle`,
+  `trailing`, `builder` on the button).
+- **Texts**: extend `HaulStrings` (or `HaulStringsEs`) and override what
+  differs — `error(DownloadError)` for the app's own codes,
+  `section(id)` for `Season 1`.
+- **Look**: `ThemeData.extensions: [HaulTheme(...)]`; colours and text come
+  from the app's `ColorScheme` and `TextTheme` otherwise.
+- **Drawing one's own**: `HaulRecordBuilder` / `HaulKeyBuilder` /
+  `HaulRecordsBuilder` follow records; `DownloadActions.of(record)` says what
+  can be done and `runHaulAction` does it; `downloadSummary` writes the state
+  line; `playableLocator` is what a player opens.
+
+`example/` is an app with public test streams (HLS, DASH, a ranged MP4, a
+grouped "show") that uses all of it.
 
 ### The planner alone
 
