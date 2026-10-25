@@ -30,7 +30,7 @@ Nothing here knows about an app's API or account. The engine takes:
 | `SourceRefresher` | A fresh link (`RefreshedSource`) for a record whose link is about to expire (`expiresAt` within `EngineConfig.linkMargin`) or was refused. Throw `RefreshException(code, message)` to fail the download with the app's own code. |
 | `CriteriaProvider` | The `TrackCriteria` of a `TrackChoice.policy()` download, read when its turn comes — a queued season follows the settings of that moment. |
 | `OutputSink` | Where a finished file goes. `HaulOutputSink` follows a `HaulDestination` the user picks — the public Downloads (MediaStore on Android), only in the app, or a folder of theirs (SAF on Android) — read at each publish, and falls back to public and then private when a folder can no longer be written. `PrivateSink` (default) keeps it in the download's folder; `DirectorySink` moves it into a folder by path, never over another file (`Name (2).ext`). Packages always stay private. |
-| `FfmpegRunner` | Runs `MkvArgs`. `FfmpegKitRunner` by default; pass another for another build. |
+| `FfmpegRunner` | Runs `MkvArgs`. `FfmpegKitRunner` (`package:haul/ffmpeg.dart`) by default; pass another for another build. |
 | `EngineHooks` | `onWholeFileTask`: dress the task of a file fetched in one request (a notification, which on Android keeps a long one in the foreground). |
 | `wifiOnly` | A `ValueListenable<bool>`: the user's "only on Wi-Fi", followed while it changes. Null: never. |
 | `WifiMonitor` | Whether the device is on Wi-Fi now, and when that changes (the app's connectivity package). Tells a Wi-Fi drop from a network error, and when to go on. |

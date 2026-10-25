@@ -13,5 +13,3 @@ export 'src/engine/model.dart';
 export 'src/engine/output_sinks.dart';
 export 'src/engine/record_store.dart';
 export 'src/engine/transfer_client.dart';
-export 'src/ffmpeg/ffmpeg_kit_runner.dart';
-export 'src/ffmpeg/frame_grabber.dart';

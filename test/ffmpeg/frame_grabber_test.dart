@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:haul/ffmpeg.dart';
 import 'package:haul/haul.dart';
 
 void main() {
