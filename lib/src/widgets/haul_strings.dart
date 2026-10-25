@@ -8,8 +8,7 @@ import 'package:haul/src/engine/model.dart';
 /// To change any of them — or add a language — extend this class (or
 /// [HaulStringsEs]) and override what differs, then hand it to
 /// `HaulScope(strings:)`. [error] is where an app's own error codes (from a
-/// `RefreshException`) get their text, and [section] where a section id
-/// (`'1'`) becomes `Season 1`.
+/// `RefreshException`) get their text.
 class HaulStrings {
   const HaulStrings();
 
@@ -50,14 +49,11 @@ class HaulStrings {
   String get empty => 'Nothing downloaded yet';
   String downloads(int count) => count == 1 ? '1 download' : '$count downloads';
 
-  /// A group's or a season's progress: `3 of 5 downloaded`.
+  /// A parent's or a season's progress: `3 of 5 downloaded`.
   String doneOf(int done, int total) => '$done of $total downloaded';
 
-  /// How a section of a group is headed. The id as it is by default.
-  String section(String id) => id;
-
   String deleteConfirm(String title) => 'Delete "$title"?';
-  String deleteGroupConfirm(String title, int count) =>
+  String deleteParentConfirm(String title, int count) =>
       'Delete the ${downloads(count)} of "$title"?';
 
   // Errors
@@ -166,7 +162,7 @@ class HaulStringsEs extends HaulStrings {
   @override
   String deleteConfirm(String title) => '¿Eliminar «$title»?';
   @override
-  String deleteGroupConfirm(String title, int count) =>
+  String deleteParentConfirm(String title, int count) =>
       '¿Eliminar las ${downloads(count)} de «$title»?';
 
   @override

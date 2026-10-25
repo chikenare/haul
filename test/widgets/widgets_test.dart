@@ -17,22 +17,17 @@ class _SilentFetcher extends SourceFetcher {
   }) => Completer<FetchedResponse>().future;
 }
 
-const _loki = DownloadGroup(id: 'loki', title: 'Loki');
+const _loki = DownloadParent(id: 'loki', title: 'Loki');
 
-DownloadRequest _request(
-  String key, {
-  DownloadGroup? group,
-  String? section,
-  num? order,
-}) => DownloadRequest(
-  key: key,
-  title: key,
-  name: OutputName(baseName: key),
-  source: SourceRequest(url: 'https://cdn.example/$key.mpd'),
-  group: group,
-  section: section,
-  order: order,
-);
+DownloadRequest _request(String key, {DownloadParent? parent, int? season}) =>
+    DownloadRequest(
+      key: key,
+      title: key,
+      name: OutputName(baseName: key),
+      source: SourceRequest(url: 'https://cdn.example/$key.mpd'),
+      parent: parent,
+      metadata: {'season': ?season},
+    );
 
 void main() {
   late Directory dir;
@@ -77,25 +72,27 @@ void main() {
       });
 
   group('HaulDownloadList', () {
-    testWidgets('a group is one row; a loose download its own', (tester) async {
+    testWidgets('a parent is one row; a loose download its own', (
+      tester,
+    ) async {
       await enqueue(tester, [
-        _request('e1', group: _loki, section: '1', order: 1),
-        _request('e2', group: _loki, section: '1', order: 2),
+        _request('e1', parent: _loki),
+        _request('e2', parent: _loki),
         _request('film'),
       ]);
-      GroupedDownloads? opened;
+      ParentDownloads? opened;
       await tester.pumpWidget(
-        app(HaulDownloadList(onOpenGroup: (g) => opened = g)),
+        app(HaulDownloadList(onOpenParent: (p) => opened = p)),
       );
       await tester.pump();
 
-      expect(find.byType(HaulGroupTile), findsOneWidget);
+      expect(find.byType(HaulParentTile), findsOneWidget);
       expect(find.byType(HaulDownloadTile), findsOneWidget);
       expect(find.text('Loki'), findsOneWidget);
       expect(find.text(const HaulStrings().doneOf(0, 2)), findsOneWidget);
 
-      await tester.tap(find.byType(HaulGroupTile));
-      expect(opened?.group.id, 'loki');
+      await tester.tap(find.byType(HaulParentTile));
+      expect(opened?.parent.id, 'loki');
     });
 
     testWidgets('empty says so, in the app strings', (tester) async {
@@ -123,25 +120,53 @@ void main() {
     });
   });
 
-  testWidgets('HaulGroupView heads each section with HaulStrings.section', (
+  testWidgets('HaulParentView heads children with what the app says', (
     tester,
   ) async {
     await enqueue(tester, [
-      _request('s2e1', group: _loki, section: '2', order: 1),
-      _request('s1e1', group: _loki, section: '1', order: 1),
+      _request('Loki S02E01', parent: _loki, season: 2),
+      _request('Loki S01E02', parent: _loki, season: 1),
+      _request('Loki S01E01', parent: _loki, season: 1),
     ]);
     await tester.pumpWidget(
       app(
-        const HaulGroupView(groupId: 'loki'),
-        strings: const _SeasonStrings(),
+        HaulParentView(
+          parentId: 'loki',
+          sectionOf: (r) => 'Season ${r.metadata['season']}',
+        ),
       ),
     );
     await tester.pump();
 
-    final season1 = tester.getTopLeft(find.text('Season 1'));
-    final season2 = tester.getTopLeft(find.text('Season 2'));
-    expect(season1.dy, lessThan(season2.dy));
-    expect(find.byType(HaulDownloadTile), findsNWidgets(2));
+    expect(find.text('Season 1'), findsOneWidget);
+    expect(find.text('Season 2'), findsOneWidget);
+    double y(String text) => tester.getTopLeft(find.text(text)).dy;
+    expect(y('Season 1'), lessThan(y('Loki S01E01')));
+    expect(y('Loki S01E01'), lessThan(y('Loki S01E02')));
+    expect(y('Loki S01E02'), lessThan(y('Season 2')));
+    expect(y('Season 2'), lessThan(y('Loki S02E01')));
+  });
+
+  testWidgets('HaulParentView follows the app order when given', (
+    tester,
+  ) async {
+    await enqueue(tester, [
+      _request('a', parent: _loki, season: 1),
+      _request('b', parent: _loki, season: 2),
+    ]);
+    await tester.pumpWidget(
+      app(
+        HaulParentView(
+          parentId: 'loki',
+          sort: (x, y) => y.title.compareTo(x.title),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      tester.getTopLeft(find.text('b')).dy,
+      lessThan(tester.getTopLeft(find.text('a')).dy),
+    );
   });
 
   testWidgets('the tile pauses with its primary button', (tester) async {
@@ -177,7 +202,7 @@ void main() {
     expect(asked, 1);
   });
 
-  group('HaulGroupDownloadButton', () {
+  group('HaulParentDownloadButton', () {
     testWidgets('asks the app while nothing of the season is there', (
       tester,
     ) async {
@@ -185,28 +210,28 @@ void main() {
       var asked = 0;
       await tester.pumpWidget(
         app(
-          HaulGroupDownloadButton(
-            groupId: 'loki',
-            section: '1',
+          HaulParentDownloadButton(
+            parentId: 'loki',
+            where: (r) => r.metadata['season'] == 1,
             onDownload: () async => asked++,
           ),
         ),
       );
-      await tester.tap(find.byType(HaulGroupDownloadButton));
+      await tester.tap(find.byType(HaulParentDownloadButton));
       expect(asked, 1);
     });
 
     testWidgets('pauses the season, then resumes it', (tester) async {
       await enqueue(tester, [
-        _request('s1e1', group: _loki, section: '1'),
-        _request('s1e2', group: _loki, section: '1'),
-        _request('s2e1', group: _loki, section: '2'),
+        _request('s1e1', parent: _loki, season: 1),
+        _request('s1e2', parent: _loki, season: 1),
+        _request('s2e1', parent: _loki, season: 2),
       ]);
       await tester.pumpWidget(
         app(
-          HaulGroupDownloadButton(
-            groupId: 'loki',
-            section: '1',
+          HaulParentDownloadButton(
+            parentId: 'loki',
+            where: (r) => r.metadata['season'] == 1,
             onDownload: () async {},
           ),
         ),
@@ -214,7 +239,7 @@ void main() {
       await tester.pump();
 
       Future<void> tapAndSettle() async {
-        await tester.tap(find.byType(HaulGroupDownloadButton));
+        await tester.tap(find.byType(HaulParentDownloadButton));
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 50)),
         );
@@ -333,11 +358,4 @@ void main() {
     await tester.pumpWidget(app(const HaulBatteryTile()));
     expect(find.byType(ListTile), findsNothing);
   });
-}
-
-class _SeasonStrings extends HaulStrings {
-  const _SeasonStrings();
-
-  @override
-  String section(String id) => 'Season $id';
 }

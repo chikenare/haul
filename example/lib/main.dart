@@ -49,7 +49,6 @@ class ExampleApp extends StatelessWidget {
     return HaulScope(
       engine: engine,
       settings: settings,
-      strings: const _ExampleStrings(),
       child: MaterialApp(
         title: 'haul example',
         theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
@@ -66,14 +65,8 @@ class ExampleApp extends StatelessWidget {
   }
 }
 
-/// Spanish when the phone is in Spanish, through the built-in strings; the
-/// sections are labelled here, as an app would.
-class _ExampleStrings extends HaulStrings {
-  const _ExampleStrings();
-
-  @override
-  String section(String id) => 'Season $id';
-}
+/// The season of an episode, from what the example keeps in `metadata`.
+int? seasonOf(DownloadRecord record) => record.metadata['season'] as int?;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -99,9 +92,9 @@ class _HomeScreenState extends State<HomeScreen> {
         0 => const CatalogScreen(),
         1 => HaulDownloadList(
           onPlay: (record) => openPlayer(context, record),
-          onOpenGroup: (group) => Navigator.of(context).push(
+          onOpenParent: (entry) => Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => GroupScreen(group: group.group),
+              builder: (_) => ParentScreen(parent: entry.parent),
             ),
           ),
         ),
@@ -132,10 +125,10 @@ class CatalogScreen extends StatelessWidget {
       children: [
         const _Heading('Movies'),
         for (final item in movies) _CatalogRow(item: item),
-        _Heading('${clips.title} (a group in two seasons)'),
-        for (final season in ['1', '2']) ...[
+        _Heading('${clips.title} (a parent, two seasons)'),
+        for (final season in [1, 2]) ...[
           _SeasonRow(season: season),
-          for (final item in episodes.where((e) => e.section == season))
+          for (final item in episodes.where((e) => e.season == season))
             _CatalogRow(item: item),
         ],
       ],
@@ -165,14 +158,10 @@ class _CatalogRow extends StatelessWidget {
     final scope = HaulScope.of(context);
     return ListTile(
       leading: HaulThumbnail(
-        imageUrl: item.imageUrl ?? item.group?.imageUrl,
+        imageUrl: item.imageUrl ?? item.parent?.imageUrl,
         size: const Size(72, 40),
       ),
-      title: Text(
-        item.section == null
-            ? item.title
-            : 'S${item.section}E${item.order} · ${item.title}',
-      ),
+      title: Text(item.listTitle),
       subtitle: Text(item.kind),
       trailing: HaulDownloadButton(
         downloadKey: item.key,
@@ -192,36 +181,35 @@ class _CatalogRow extends StatelessWidget {
   }
 }
 
-/// A whole season at once: the group's button for one section.
+/// A whole season at once: the parent's button for some of its children.
 class _SeasonRow extends StatelessWidget {
   const _SeasonRow({required this.season});
 
-  final String season;
+  final int season;
 
   @override
   Widget build(BuildContext context) {
     final scope = HaulScope.of(context);
+    final items = episodes.where((e) => e.season == season).toList();
+    bool inSeason(DownloadRecord r) => seasonOf(r) == season;
     return ListTile(
       title: Text('Season $season'),
-      subtitle: HaulGroupProgressBuilder(
-        groupId: clips.id,
-        section: season,
+      subtitle: HaulParentProgressBuilder(
+        parentId: clips.id,
+        where: inSeason,
         builder: (context, progress) => Text(
-          HaulScope.stringsOf(context).doneOf(
-            progress.done,
-            episodes.where((e) => e.section == season).length,
-          ),
+          HaulScope.stringsOf(context).doneOf(progress.done, items.length),
         ),
       ),
-      trailing: HaulGroupDownloadButton(
-        groupId: clips.id,
-        section: season,
+      trailing: HaulParentDownloadButton(
+        parentId: clips.id,
+        where: inSeason,
         onDownload: () async {
           final android = Theme.of(context).platform == TargetPlatform.android;
           if (!await ensureHaulSetup(context, showWifiOnly: true)) return;
           // What is there already is left as it is.
           await scope.engine.enqueueAll([
-            for (final item in episodes.where((e) => e.section == season))
+            for (final item in items)
               item.request(
                 scope.settings!.value.output(subtitleSidecars: android),
               ),
@@ -232,20 +220,25 @@ class _SeasonRow extends StatelessWidget {
   }
 }
 
-class GroupScreen extends StatelessWidget {
-  const GroupScreen({super.key, required this.group});
+class ParentScreen extends StatelessWidget {
+  const ParentScreen({super.key, required this.parent});
 
-  final DownloadGroup group;
+  final DownloadParent parent;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(group.title),
-        actions: [HaulGroupActions(group: group)],
+        title: Text(parent.title),
+        actions: [HaulParentActions(parent: parent)],
       ),
-      body: HaulGroupView(
-        groupId: group.id,
+      body: HaulParentView(
+        parentId: parent.id,
+        // Headings from the app's own data; the titles already sort.
+        sectionOf: (r) => switch (seasonOf(r)) {
+          final season? => 'Season $season',
+          null => null,
+        },
         onPlay: (record) => openPlayer(context, record),
         onEmpty: () => Navigator.of(context).maybePop(),
       ),

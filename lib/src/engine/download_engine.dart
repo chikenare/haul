@@ -9,9 +9,9 @@ import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:haul/src/engine/errors.dart';
 import 'package:haul/src/engine/extension_points.dart';
-import 'package:haul/src/engine/groups.dart';
 import 'package:haul/src/engine/model.dart';
 import 'package:haul/src/engine/output_sinks.dart';
+import 'package:haul/src/engine/parents.dart';
 import 'package:haul/src/engine/record_store.dart';
 import 'package:haul/src/engine/transfer_client.dart';
 import 'package:haul/src/ffmpeg/ffmpeg_kit_runner.dart';
@@ -310,7 +310,7 @@ class DownloadEngine {
   /// [records], until the next change to [_records].
   List<DownloadRecord>? _snapshot;
 
-  /// [records] as a list of loose downloads and groups (see
+  /// [records] as a list of loose downloads and parents (see
   /// [downloadEntries]). The same list is answered until its shape changes
   /// — a download added, removed or moved — not on every progress tick.
   List<DownloadEntry> get entries {
@@ -327,12 +327,17 @@ class DownloadEngine {
   List<DownloadEntry> _entries = const [];
   List<DownloadRecord>? _entriesOf;
 
-  /// The group [groupId] as listed in [entries]; null once it has no
-  /// downloads.
-  GroupedDownloads? group(String groupId) => entries
-      .whereType<GroupedDownloads>()
-      .where((g) => g.group.id == groupId)
+  /// The parent [parentId] as listed in [entries]; null once it has no
+  /// children.
+  ParentDownloads? parent(String parentId) => entries
+      .whereType<ParentDownloads>()
+      .where((e) => e.parent.id == parentId)
       .firstOrNull;
+
+  /// The children of [parentId], in list order.
+  List<DownloadRecord> childrenOf(String parentId) => [
+    for (final id in parent(parentId)?.ids ?? const <String>[]) _records[id]!,
+  ];
 
   DownloadRecord? byId(String id) => _records[id];
 
@@ -372,25 +377,24 @@ class DownloadEngine {
   Stream<DownloadRecord?> watch(String id) =>
       watchAll().map((_) => _records[id]).distinct();
 
-  /// How far the group [groupId] is — or its [section] only.
-  GroupProgress groupProgress(String groupId, {String? section}) =>
-      GroupProgress.of([
-        for (final id in _idsOfGroup(groupId, section)) _records[id]!,
-      ]);
+  /// How far the children of [parentId] are — those that pass [where],
+  /// when given (one season).
+  ParentProgress parentProgress(
+    String parentId, {
+    bool Function(DownloadRecord record)? where,
+  }) => ParentProgress.of(_childrenWhere(parentId, where));
 
-  /// [groupProgress] now and whenever it changes.
-  Stream<GroupProgress> watchGroupProgress(String groupId, {String? section}) =>
-      watchAll()
-          .map((_) => groupProgress(groupId, section: section))
-          .distinct();
+  /// [childrenOf] now and on every change of any of them.
+  Stream<List<DownloadRecord>> watchChildren(String parentId) =>
+      watchAll().map((_) => childrenOf(parentId));
 
   /// [entries] now and whenever their shape changes.
   Stream<List<DownloadEntry>> watchEntries() =>
       watchAll().map((_) => entries).distinct(identical);
 
-  /// [group] now and whenever its shape changes.
-  Stream<GroupedDownloads?> watchGroup(String groupId) =>
-      watchEntries().map((_) => group(groupId)).distinct();
+  /// [parent] now and whenever its shape changes.
+  Stream<ParentDownloads?> watchParent(String parentId) =>
+      watchEntries().map((_) => parent(parentId)).distinct();
 
   /// [waitingForWifi] now and whenever it changes.
   Stream<bool> watchWaitingForWifi() =>
@@ -463,9 +467,7 @@ class DownloadEngine {
       // request — so an app can file its older downloads in groups.
       _updateDetails(
         existing.id,
-        group: request.group,
-        section: request.section,
-        order: request.order,
+        parent: request.parent,
         imageUrl: request.imageUrl,
       );
       return (id: existing.id, outcome: EnqueueOutcome.existing);
@@ -510,9 +512,7 @@ class DownloadEngine {
             name: request.name,
             metadata: request.metadata,
             frameLocator: null,
-            group: request.group,
-            section: request.section,
-            order: request.order,
+            parent: request.parent,
             imageUrl: request.imageUrl,
             status: DownloadStatus.queued,
             error: null,
@@ -607,42 +607,52 @@ class DownloadEngine {
     unawaited(_pump());
   }
 
-  /// [pause] on every download of the group — or of its [section].
-  Future<void> pauseGroup(String groupId, {String? section}) async {
+  /// [pause] on every child of [parentId] — those that pass [where],
+  /// when given.
+  Future<void> pauseParent(
+    String parentId, {
+    bool Function(DownloadRecord record)? where,
+  }) async {
     await _whenReady();
     // All at once: one still reading a source that does not answer must
     // not keep the rest going.
     await Future.wait([
-      for (final id in _idsOfGroup(groupId, section)) pause(id),
+      for (final r in _childrenWhere(parentId, where)) pause(r.id),
     ]);
   }
 
-  /// [resume] on every paused download of the group (or of its
-  /// [section]), and [retry] on every failed one.
-  Future<void> resumeGroup(String groupId, {String? section}) async {
+  /// [resume] on every paused child of [parentId], and [retry] on every
+  /// failed one — those that pass [where], when given.
+  Future<void> resumeParent(
+    String parentId, {
+    bool Function(DownloadRecord record)? where,
+  }) async {
     await _whenReady();
-    for (final id in _idsOfGroup(groupId, section)) {
-      await _requeue(id);
+    for (final r in _childrenWhere(parentId, where)) {
+      await _requeue(r.id);
     }
   }
 
-  /// [delete] on every download of the group — or of its [section].
-  Future<void> deleteGroup(
-    String groupId, {
-    String? section,
+  /// [delete] on every child of [parentId] — those that pass [where],
+  /// when given.
+  Future<void> deleteParent(
+    String parentId, {
+    bool Function(DownloadRecord record)? where,
     bool keepOutput = false,
   }) async {
     await _whenReady();
     await Future.wait([
-      for (final id in _idsOfGroup(groupId, section))
-        delete(id, keepOutput: keepOutput),
+      for (final r in _childrenWhere(parentId, where))
+        delete(r.id, keepOutput: keepOutput),
     ]);
   }
 
-  List<String> _idsOfGroup(String groupId, [String? section]) => [
+  List<DownloadRecord> _childrenWhere(
+    String parentId,
+    bool Function(DownloadRecord record)? where,
+  ) => [
     for (final r in _records.values)
-      if (r.group?.id == groupId && (section == null || r.section == section))
-        r.id,
+      if (r.parent?.id == parentId && (where == null || where(r))) r,
   ];
 
   /// Deletes everything not finished. Answers how many went. A title that
@@ -660,39 +670,23 @@ class DownloadEngine {
     return pending.length;
   }
 
-  /// Files a download under [group] and [section], at [order], with
-  /// [imageUrl] — only what is given changes. For downloads asked for
-  /// before the app grouped them: read their `metadata` and file them here.
+  /// Files a download under [parent], with [imageUrl] — only what is
+  /// given changes. For downloads asked for before the app gave them a
+  /// parent: read their `metadata` and file them here.
   Future<void> updateDetails(
     String id, {
-    DownloadGroup? group,
-    String? section,
-    num? order,
+    DownloadParent? parent,
     String? imageUrl,
   }) async {
     await _whenReady();
-    _updateDetails(
-      id,
-      group: group,
-      section: section,
-      order: order,
-      imageUrl: imageUrl,
-    );
+    _updateDetails(id, parent: parent, imageUrl: imageUrl);
   }
 
-  void _updateDetails(
-    String id, {
-    DownloadGroup? group,
-    String? section,
-    num? order,
-    String? imageUrl,
-  }) {
+  void _updateDetails(String id, {DownloadParent? parent, String? imageUrl}) {
     final record = _records[id];
     if (record == null) return;
     final updated = record.copyWith(
-      group: group ?? record.group,
-      section: section ?? record.section,
-      order: order ?? record.order,
+      parent: parent ?? record.parent,
       imageUrl: imageUrl ?? record.imageUrl,
     );
     if (updated != record) _put(updated);

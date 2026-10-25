@@ -13,11 +13,11 @@ the engine to the widgets. Layers in one package, each usable on its own:
   exports the planner) — the queue on top: one `DownloadRecord` per title,
   every piece fetched through `background_downloader`, progress,
   pause/resume/retry, fresh links when one runs out, and the finished package
-  or file handed to wherever the app keeps it. Downloads can be grouped (a
-  show and its seasons). It brings its own ffmpeg (ffmpeg-kit, minimal build)
+  or file handed to wherever the app keeps it. A download can belong to a
+  parent (a show) and be listed inside it. It brings its own ffmpeg (ffmpeg-kit, minimal build)
   and its own Android side: folders picked with SAF, the public Downloads
   through MediaStore, and the battery saver.
-- **Widgets** (`package:haul/widgets.dart`) — rows, buttons, a grouped list,
+- **Widgets** (`package:haul/widgets.dart`) — rows, buttons, a list with parents,
   the first-download sheet and settings rows, following the app's theme and
   replaceable piece by piece (see [Widgets](#widgets)).
 
@@ -109,17 +109,19 @@ or ffmpeg.
   `unavailable`, `corrupt`, `publish_failed`, `unknown`) or the app's own from
   a `RefreshException`. The app localizes it.
 
-- **Groups.** A request's `group` (`DownloadGroup(id, title, imageUrl)`),
-  `section` and `order` put it with others: `engine.entries` lists loose
-  downloads and groups newest first, each group in sections in their natural
-  order (`2` before `10`) and by `order` within. The list keeps its identity
-  while only progress changes, so a list built on `watchEntries()` rebuilds
-  when a download comes, goes or moves, and each row follows its own record.
-  `pauseGroup`, `resumeGroup` and `deleteGroup` act on all of one, or on
-  one `section`; `groupProgress` / `watchGroupProgress` say how far it is.
-  Downloads asked for before the app grouped them are filed with
-  `updateDetails(id, group:, section:, order:)` — read their `metadata` and
-  file them once — and asking again for one files it as the request says.
+- **Parents.** A request's `parent` (`DownloadParent(id, title, imageUrl)`)
+  says what the download belongs to — a show — and that is all: there are
+  no seasons or positions in the engine. `engine.entries` lists loose
+  downloads and parents newest first, a parent as one row whose children
+  (`childrenOf`) go by title in natural order (`S01E02` before `S01E10`).
+  The list keeps its identity while only progress changes, so a list built
+  on `watchEntries()` rebuilds when a download comes, goes or moves, and
+  each row follows its own record. `pauseParent`, `resumeParent`,
+  `deleteParent` and `parentProgress` act on all the children, or on those
+  that pass `where:` (one season, read from the app's `metadata`).
+  Downloads asked for before the app gave them a parent get one with
+  `updateDetails(id, parent:)`, and asking again for one files it as the
+  request says.
 - **Pictures.** A request's `imageUrl` is what the download is shown by.
   Without one, the engine takes a frame of the finished download
   (`ThumbnailGrabber`, `FrameGrabber` by default; `thumbnails: null` turns
@@ -226,30 +228,32 @@ HaulScope(
 );
 ```
 
-- **Default widgets**: `HaulDownloadList` (grouped, `onOpenGroup`),
-  `HaulGroupDownloadButton(groupId, section:, onDownload:)` for a show or a
+- **Default widgets**: `HaulDownloadList` (parents as one row,
+  `onOpenParent`), `HaulParentView` for a parent's children — headings and
+  order are the app's, from each child's `metadata`: `sectionOf: (r) =>
+  'Season ${r.metadata['season']}'`, `sort:` — and `HaulParentActions`;
+  `HaulParentDownloadButton(parentId, where:, onDownload:)` for a show or a
   season (download what is missing, pause all, resume all) with
-  `HaulGroupProgressIcon` / `HaulGroupProgressBuilder`,
-  `HaulGroupView` + `HaulGroupActions`, `HaulDownloadTile`,
-  `HaulDownloadButton(downloadKey, onDownload)`, `HaulProgressIcon`,
-  `HaulActionsMenu`, `HaulThumbnail`; `ensureHaulSetup(context)` before the
-  first download; `HaulFormatTile`, `HaulDestinationTile`,
-  `HaulWifiOnlyTile`, `HaulBatteryTile` for a settings page.
+  `HaulParentProgressIcon` / `HaulParentProgressBuilder`;
+  `HaulDownloadTile`, `HaulDownloadButton(downloadKey, onDownload)`,
+  `HaulProgressIcon`, `HaulActionsMenu`, `HaulThumbnail`;
+  `ensureHaulSetup(context)` before the first download; `HaulFormatTile`,
+  `HaulDestinationTile`, `HaulWifiOnlyTile`, `HaulBatteryTile` for a
+  settings page.
 - **Replacing parts**: every row takes builders (`itemBuilder`,
-  `groupBuilder`, `sectionBuilder`, `leading`, `title`, `subtitle`,
-  `trailing`, `builder` on the button).
+  `parentBuilder`, `sectionBuilder`, `leading`, `title`, `subtitle`,
+  `trailing`, `builder` on the buttons).
 - **Texts**: extend `HaulStrings` (or `HaulStringsEs`) and override what
-  differs — `error(DownloadError)` for the app's own codes,
-  `section(id)` for `Season 1`.
+  differs — `error(DownloadError)` for the app's own codes.
 - **Look**: `ThemeData.extensions: [HaulTheme(...)]`; colours and text come
   from the app's `ColorScheme` and `TextTheme` otherwise.
 - **Drawing one's own**: `HaulRecordBuilder` / `HaulKeyBuilder` /
-  `HaulRecordsBuilder` follow records; `DownloadActions.of(record)` says what
+  `HaulRecordsBuilder` / `HaulChildrenBuilder` follow records; `DownloadActions.of(record)` says what
   can be done and `runHaulAction` does it; `downloadSummary` writes the state
   line; `playableLocator` is what a player opens.
 
 `example/` is an app with public test streams (HLS, DASH, a ranged MP4, a
-grouped "show") that uses all of it.
+"show" as a parent with two seasons) that uses all of it.
 
 ### The planner alone
 

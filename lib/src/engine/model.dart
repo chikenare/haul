@@ -163,20 +163,21 @@ abstract class OutputName with _$OutputName {
       _$OutputNameFromJson(json);
 }
 
-/// What several downloads belong to, as the app wants them shown together:
-/// a show, an album, a course. Records with the same [id] are listed as one
-/// entry (see `DownloadEngine.entries`); the newest record's [title] and
-/// [imageUrl] are the group's.
+/// What a download belongs to, as the app wants it shown: a show, an
+/// album, a course. Downloads with the same [id] are listed as one row
+/// (see `DownloadEngine.entries`) whose children they are; the newest
+/// download's [title] and [imageUrl] are the parent's. The parent is not a
+/// download itself, so each child carries how it is shown.
 @freezed
-abstract class DownloadGroup with _$DownloadGroup {
-  const factory DownloadGroup({
+abstract class DownloadParent with _$DownloadParent {
+  const factory DownloadParent({
     required String id,
     required String title,
     String? imageUrl,
-  }) = _DownloadGroup;
+  }) = _DownloadParent;
 
-  factory DownloadGroup.fromJson(Map<String, Object?> json) =>
-      _$DownloadGroupFromJson(json);
+  factory DownloadParent.fromJson(Map<String, Object?> json) =>
+      _$DownloadParentFromJson(json);
 }
 
 @freezed
@@ -267,14 +268,8 @@ abstract class DownloadRecord with _$DownloadRecord {
     /// The app's own data, kept and handed back as is.
     @Default({}) Map<String, Object?> metadata,
 
-    /// See [DownloadRequest.group].
-    DownloadGroup? group,
-
-    /// See [DownloadRequest.section].
-    String? section,
-
-    /// See [DownloadRequest.order].
-    num? order,
+    /// See [DownloadRequest.parent].
+    DownloadParent? parent,
 
     /// See [DownloadRequest.imageUrl].
     String? imageUrl,
@@ -350,9 +345,7 @@ class DownloadRequest {
     this.plan,
     this.output = OutputMode.package,
     this.metadata = const {},
-    this.group,
-    this.section,
-    this.order,
+    this.parent,
     this.imageUrl,
   });
 
@@ -370,17 +363,9 @@ class DownloadRequest {
   final OutputMode output;
   final Map<String, Object?> metadata;
 
-  /// What this is listed under together with others; null: on its own.
-  final DownloadGroup? group;
-
-  /// A part of [group] (a season): its records are listed together, the
-  /// sections in their natural order (`2` before `10`). The app labels it,
-  /// so no translated text is stored.
-  final String? section;
-
-  /// Where it goes within its [section] (an episode's number); without
-  /// one, in the order it was asked for.
-  final num? order;
+  /// What it belongs to (a show), listed as one row with the rest of
+  /// its children; null: a row of its own.
+  final DownloadParent? parent;
 
   /// A picture to show it by: a poster, a thumbnail. Without one, the
   /// engine takes a frame of the finished download (see

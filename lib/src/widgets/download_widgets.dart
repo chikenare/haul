@@ -432,7 +432,7 @@ class _ProgressThumbnail extends StatelessWidget {
         HaulThumbnail(
           imageUrl:
               HaulScope.of(context).engine.imageOf(record) ??
-              record.group?.imageUrl,
+              record.parent?.imageUrl,
         ),
         if (record.status != DownloadStatus.done)
           Positioned(

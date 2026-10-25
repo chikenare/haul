@@ -8,9 +8,9 @@ class SampleItem {
     required this.url,
     this.kind = '',
     this.imageUrl,
-    this.group,
-    this.section,
-    this.order,
+    this.parent,
+    this.season,
+    this.episode,
   });
 
   final String key;
@@ -20,29 +20,36 @@ class SampleItem {
   /// What it exercises: `HLS`, `DASH`, `MP4 in ranges`…
   final String kind;
   final String? imageUrl;
-  final DownloadGroup? group;
-  final String? section;
-  final num? order;
+  final DownloadParent? parent;
+
+  /// The app's own data: haul only keeps it (in `metadata`). The list
+  /// reads it back for its headings and the season buttons.
+  final int? season;
+  final int? episode;
+
+  /// `S01E02 Jellyfish`: by title in natural order is the order of the
+  /// episodes.
+  String get listTitle =>
+      season == null ? title : 'S${_two(season!)}E${_two(episode ?? 0)} $title';
+
+  static String _two(int n) => n.toString().padLeft(2, '0');
 
   OutputName get name => OutputName(
-    baseName: group == null
-        ? title
-        : '${group!.title} S${section ?? '0'}E${order ?? 0} - $title',
+    baseName: parent == null ? title : '${parent!.title} $listTitle',
     folders: [
-      if (group != null) ...[group!.title, 'Season ${section ?? '0'}'],
+      if (parent != null) ...[parent!.title, 'Season ${_two(season ?? 0)}'],
     ],
   );
 
   DownloadRequest request(OutputMode output) => DownloadRequest(
     key: key,
-    title: title,
+    title: listTitle,
     name: name,
     source: SourceRequest(url: url),
     output: output,
-    group: group,
-    section: section,
-    order: order,
+    parent: parent,
     imageUrl: imageUrl,
+    metadata: {'season': ?season, 'episode': ?episode},
   );
 }
 
@@ -50,7 +57,7 @@ const _poster =
     'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';
 
 /// No picture of its own: its rows show a frame of each episode.
-const clips = DownloadGroup(id: 'clips', title: 'Test clips');
+const clips = DownloadParent(id: 'clips', title: 'Test clips');
 
 /// Public test streams, free to download.
 const movies = [
@@ -83,44 +90,44 @@ const episodes = [
     title: 'Bunny',
     kind: 'MP4',
     url: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4',
-    group: clips,
-    section: '1',
-    order: 1,
+    parent: clips,
+    season: 1,
+    episode: 1,
   ),
   SampleItem(
     key: 'clip-jellyfish',
     title: 'Jellyfish',
     kind: 'MP4',
     url: 'https://test-videos.co.uk/vids/jellyfish/mp4/h264/360/Jellyfish_360_10s_1MB.mp4',
-    group: clips,
-    section: '1',
-    order: 2,
+    parent: clips,
+    season: 1,
+    episode: 2,
   ),
   SampleItem(
     key: 'clip-sintel',
     title: 'Sintel',
     kind: 'MP4',
     url: 'https://test-videos.co.uk/vids/sintel/mp4/h264/360/Sintel_360_10s_1MB.mp4',
-    group: clips,
-    section: '1',
-    order: 3,
+    parent: clips,
+    season: 1,
+    episode: 3,
   ),
   SampleItem(
     key: 'clip-bipbop',
     title: 'Bipbop',
     kind: 'HLS fMP4, audios and subtitles',
     url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
-    group: clips,
-    section: '2',
-    order: 1,
+    parent: clips,
+    season: 2,
+    episode: 1,
   ),
   SampleItem(
     key: 'clip-angel-hls',
     title: 'Angel One',
     kind: 'HLS',
     url: 'https://storage.googleapis.com/shaka-demo-assets/angel-one-hls/hls.m3u8',
-    group: clips,
-    section: '2',
-    order: 2,
+    parent: clips,
+    season: 2,
+    episode: 2,
   ),
 ];

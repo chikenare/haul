@@ -36,8 +36,7 @@ void main() {
             url: 'https://storage.googleapis.com/shaka-demo-assets/angel-one/dash.mpd',
           ),
           output: OutputMode.file,
-          group: DownloadGroup(id: 'g', title: 'Group'),
-          section: '1',
+          parent: DownloadParent(id: 'g', title: 'Group'),
         ),
       );
 
@@ -61,7 +60,7 @@ void main() {
 
       final image = engine.imageOf(record)!;
       expect(await File(image).length(), greaterThan(1000));
-      expect(engine.groupProgress('g', section: '1').isDone, isTrue);
+      expect(engine.parentProgress('g').isDone, isTrue);
 
       // ignore: avoid_print
       print('output: $output\nthumbnail: $image');

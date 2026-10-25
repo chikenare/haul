@@ -1,9 +1,9 @@
 ## Unreleased
 
-- Groups: `DownloadGroup`, `section`, `order` and `imageUrl` on requests and
-  records (optional, old records read the same); `engine.entries`,
-  `watchEntries`, `group`/`watchGroup`, `pauseGroup`, `resumeGroup`,
-  `deleteGroup`.
+- Parents: `DownloadParent` and `imageUrl` on requests and records
+  (optional, old records read the same); `engine.entries`, `watchEntries`,
+  `parent`/`watchParent`, `childrenOf`/`watchChildren`, `pauseParent`,
+  `resumeParent`, `deleteParent`, `parentProgress` (all with `where:`).
 - ffmpeg inside: `FfmpegKitRunner` is the engine's default; `FrameGrabber`
   for thumbnails.
 - Android plugin (`HaulAndroid`): SAF folders, `content://` files, battery
@@ -11,9 +11,10 @@
 - `HaulDestination` and `HaulOutputSink` (public, app only, picked folder).
 - `package:haul/widgets.dart`: scope, settings, strings (en/es), theme,
   actions and default widgets, all replaceable.
-- `updateDetails` and re-enqueueing file older downloads in groups; group
-  actions and `groupProgress` by section; `HaulGroupDownloadButton`,
-  `HaulGroupProgressIcon`, `HaulGroupProgressBuilder`.
+- `updateDetails` and re-enqueueing give older downloads a parent;
+  `HaulParentView` (headings and order from the app), `HaulParentTile`,
+  `HaulParentActions`, `HaulParentDownloadButton`, `HaulParentProgressIcon`,
+  `HaulParentProgressBuilder`, `HaulChildrenBuilder`.
 - Thumbnails: without `imageUrl`, a frame of the finished download
   (`ThumbnailGrabber`, `engine.imageOf`).
 - ffmpeg is exported from `package:haul/ffmpeg.dart`, not `haul.dart`.

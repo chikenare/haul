@@ -1,33 +1,34 @@
 import 'package:flutter/material.dart';
-import 'package:haul/src/engine/groups.dart';
 import 'package:haul/src/engine/model.dart';
+import 'package:haul/src/engine/parents.dart';
 import 'package:haul/src/widgets/download_widgets.dart';
 import 'package:haul/src/widgets/haul_scope.dart';
 
-/// Every download, groups as one row each, newest first. Rebuilt only when
-/// a download comes, goes or moves; each row follows its own progress.
+/// Every download, a parent as one row with its children inside, newest
+/// first. Rebuilt only when a download comes, goes or moves; each row
+/// follows its own progress.
 class HaulDownloadList extends StatelessWidget {
   const HaulDownloadList({
     super.key,
     this.onPlay,
-    this.onOpenGroup,
+    this.onOpenParent,
     this.itemBuilder,
-    this.groupBuilder,
+    this.parentBuilder,
     this.empty,
     this.padding,
   });
 
   final void Function(DownloadRecord record)? onPlay;
 
-  /// What tapping a group does: usually a screen with [HaulGroupView].
-  final void Function(GroupedDownloads group)? onOpenGroup;
+  /// What tapping a parent does: usually a screen with [HaulParentView].
+  final void Function(ParentDownloads parent)? onOpenParent;
 
   /// Replaces the row of a loose download (by default [HaulDownloadTile]).
   final Widget Function(BuildContext context, String id)? itemBuilder;
 
-  /// Replaces the row of a group (by default [HaulGroupTile]).
-  final Widget Function(BuildContext context, GroupedDownloads group)?
-  groupBuilder;
+  /// Replaces the row of a parent (by default [HaulParentTile]).
+  final Widget Function(BuildContext context, ParentDownloads parent)?
+  parentBuilder;
 
   /// Shown when there is nothing; by default a line of text.
   final Widget? empty;
@@ -52,14 +53,14 @@ class HaulDownloadList extends StatelessWidget {
             SingleDownload(:final id) =>
               itemBuilder?.call(context, id) ??
                   HaulDownloadTile(key: ValueKey(id), id: id, onPlay: onPlay),
-            final GroupedDownloads group =>
-              groupBuilder?.call(context, group) ??
-                  HaulGroupTile(
-                    key: ValueKey('group:${group.group.id}'),
-                    group: group,
-                    onTap: onOpenGroup == null
+            final ParentDownloads parent =>
+              parentBuilder?.call(context, parent) ??
+                  HaulParentTile(
+                    key: ValueKey('parent:${parent.parent.id}'),
+                    parent: parent,
+                    onTap: onOpenParent == null
                         ? null
-                        : () => onOpenGroup!(group),
+                        : () => onOpenParent!(parent),
                   ),
           },
         );
@@ -93,41 +94,64 @@ class HaulRecordsBuilder extends StatelessWidget {
   }
 }
 
-/// Follows how far the group [groupId] is — or its [section] only.
-class HaulGroupProgressBuilder extends StatelessWidget {
-  const HaulGroupProgressBuilder({
+/// The children of [parentId], now and on every change of any of them.
+class HaulChildrenBuilder extends StatelessWidget {
+  const HaulChildrenBuilder({
     super.key,
-    required this.groupId,
-    this.section,
+    required this.parentId,
     required this.builder,
   });
 
-  final String groupId;
-  final String? section;
-  final Widget Function(BuildContext context, GroupProgress progress) builder;
+  final String parentId;
+  final Widget Function(BuildContext context, List<DownloadRecord> children)
+  builder;
 
   @override
   Widget build(BuildContext context) {
     final engine = HaulScope.of(context).engine;
-    return HaulEngineBuilder<GroupProgress>(
-      identity: (engine, groupId, section),
-      stream: () => engine.watchGroupProgress(groupId, section: section),
-      current: () => engine.groupProgress(groupId, section: section),
+    return HaulEngineBuilder<List<DownloadRecord>>(
+      identity: (engine, parentId),
+      stream: () => engine.watchChildren(parentId),
+      current: () => engine.childrenOf(parentId),
       builder: builder,
     );
   }
 }
 
-/// A group's state at a glance, like [HaulProgressIcon] for one download:
-/// a ring across its downloads, a pause, a check, an alert.
-class HaulGroupProgressIcon extends StatelessWidget {
-  const HaulGroupProgressIcon({
+/// How far the children of [parentId] are — those that pass [where], when
+/// given (one season: `where: (r) => r.metadata['season'] == 2`).
+class HaulParentProgressBuilder extends StatelessWidget {
+  const HaulParentProgressBuilder({
+    super.key,
+    required this.parentId,
+    this.where,
+    required this.builder,
+  });
+
+  final String parentId;
+  final bool Function(DownloadRecord record)? where;
+  final Widget Function(BuildContext context, ParentProgress progress) builder;
+
+  @override
+  Widget build(BuildContext context) => HaulChildrenBuilder(
+    parentId: parentId,
+    builder: (context, children) => builder(
+      context,
+      ParentProgress.of(where == null ? children : children.where(where!)),
+    ),
+  );
+}
+
+/// A parent's state at a glance, like [HaulProgressIcon] for one download:
+/// a ring across its children, a pause, a check, an alert.
+class HaulParentProgressIcon extends StatelessWidget {
+  const HaulParentProgressIcon({
     super.key,
     required this.progress,
     this.size = 24,
   });
 
-  final GroupProgress progress;
+  final ParentProgress progress;
   final double size;
 
   @override
@@ -170,27 +194,28 @@ class HaulGroupProgressIcon extends StatelessWidget {
   }
 }
 
-/// The download button of a show or a season ([section]): [onDownload]
-/// while nothing moves and nothing waits — the app enqueues what is
-/// missing its own way, and what is there already is left alone — then
-/// pause all while they move, and resume (or retry) all once they stopped.
-class HaulGroupDownloadButton extends StatelessWidget {
-  const HaulGroupDownloadButton({
+/// The download button of a show — or of a season, with [where]:
+/// [onDownload] while nothing moves and nothing waits — the app enqueues
+/// what is missing its own way, and what is there already is left alone —
+/// then pause all while they move, and resume (or retry) all once they
+/// stopped.
+class HaulParentDownloadButton extends StatelessWidget {
+  const HaulParentDownloadButton({
     super.key,
-    required this.groupId,
-    this.section,
+    required this.parentId,
+    this.where,
     required this.onDownload,
     this.builder,
   });
 
-  final String groupId;
-  final String? section;
+  final String parentId;
+  final bool Function(DownloadRecord record)? where;
   final Future<void> Function() onDownload;
 
   /// To draw it differently; [onPressed] does what the default would.
   final Widget Function(
     BuildContext context,
-    GroupProgress progress,
+    ParentProgress progress,
     VoidCallback onPressed,
   )?
   builder;
@@ -199,18 +224,18 @@ class HaulGroupDownloadButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final engine = HaulScope.of(context).engine;
     final strings = HaulScope.stringsOf(context);
-    return HaulGroupProgressBuilder(
-      groupId: groupId,
-      section: section,
+    return HaulParentProgressBuilder(
+      parentId: parentId,
+      where: where,
       builder: (context, progress) {
         final (VoidCallback onPressed, String tooltip) = progress.isActive
             ? (
-                () => engine.pauseGroup(groupId, section: section),
+                () => engine.pauseParent(parentId, where: where),
                 strings.pauseAll,
               )
             : progress.isStopped
             ? (
-                () => engine.resumeGroup(groupId, section: section),
+                () => engine.resumeParent(parentId, where: where),
                 strings.resumeAll,
               )
             : (() => onDownload(), strings.download);
@@ -222,19 +247,19 @@ class HaulGroupDownloadButton extends StatelessWidget {
               ? tooltip
               : '$tooltip · ${strings.doneOf(progress.done, progress.total)}',
           onPressed: onPressed,
-          icon: HaulGroupProgressIcon(progress: progress),
+          icon: HaulParentProgressIcon(progress: progress),
         );
       },
     );
   }
 }
 
-/// A group's row: its picture, its title, how many downloads it holds and
+/// A parent's row: its picture, its title, how many children it holds and
 /// how far along they are.
-class HaulGroupTile extends StatelessWidget {
-  const HaulGroupTile({super.key, required this.group, this.onTap});
+class HaulParentTile extends StatelessWidget {
+  const HaulParentTile({super.key, required this.parent, this.onTap});
 
-  final GroupedDownloads group;
+  final ParentDownloads parent;
   final VoidCallback? onTap;
 
   @override
@@ -243,12 +268,12 @@ class HaulGroupTile extends StatelessWidget {
     final strings = HaulScope.stringsOf(context);
     final theme = HaulTheme.of(context);
     final text = Theme.of(context).textTheme;
-    return HaulGroupProgressBuilder(
-      groupId: group.group.id,
+    return HaulParentProgressBuilder(
+      parentId: parent.parent.id,
       builder: (context, progress) {
         final image =
-            group.group.imageUrl ??
-            group.ids
+            parent.parent.imageUrl ??
+            parent.ids
                 .map(engine.byId)
                 .nonNulls
                 .map(engine.imageOf)
@@ -267,7 +292,7 @@ class HaulGroupTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        group.group.title,
+                        parent.parent.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: text.titleSmall,
@@ -309,25 +334,32 @@ class HaulGroupTile extends StatelessWidget {
   }
 }
 
-/// The downloads of one group, section by section, with its own actions
-/// (pause, resume, delete all) for an app bar. Pops [onEmpty] — or does
-/// nothing — once the group has no downloads left.
-class HaulGroupView extends StatelessWidget {
-  const HaulGroupView({
+/// The children of one parent. Headings and order are the app's, read
+/// from what it keeps in each child (`metadata`): [sectionOf] gives the
+/// heading a child goes under (`Season 1`; null: none), and [sort] their
+/// order — by title in natural order otherwise. A heading is drawn where
+/// it changes, so sort by it first. [onEmpty] runs once the parent has no
+/// children left (pop the screen).
+class HaulParentView extends StatelessWidget {
+  const HaulParentView({
     super.key,
-    required this.groupId,
+    required this.parentId,
     this.onPlay,
+    this.sectionOf,
+    this.sort,
     this.itemBuilder,
     this.sectionBuilder,
     this.onEmpty,
     this.padding,
   });
 
-  final String groupId;
+  final String parentId;
   final void Function(DownloadRecord record)? onPlay;
+  final String? Function(DownloadRecord record)? sectionOf;
+  final Comparator<DownloadRecord>? sort;
   final Widget Function(BuildContext context, String id)? itemBuilder;
 
-  /// Replaces a section's heading; by default `HaulStrings.section`.
+  /// Replaces a heading; by default a line of text.
   final Widget Function(BuildContext context, String section)? sectionBuilder;
   final VoidCallback? onEmpty;
   final EdgeInsets? padding;
@@ -336,45 +368,57 @@ class HaulGroupView extends StatelessWidget {
   Widget build(BuildContext context) {
     final engine = HaulScope.of(context).engine;
     final strings = HaulScope.stringsOf(context);
-    return HaulEngineBuilder<GroupedDownloads?>(
-      identity: (engine, groupId),
-      stream: () => engine.watchGroup(groupId),
-      current: () => engine.group(groupId),
-      builder: (context, group) {
-        if (group == null) {
+    return HaulEngineBuilder<ParentDownloads?>(
+      identity: (engine, parentId),
+      stream: () => engine.watchParent(parentId),
+      current: () => engine.parent(parentId),
+      builder: (context, parent) {
+        if (parent == null) {
           if (onEmpty case final onEmpty?) {
             WidgetsBinding.instance.addPostFrameCallback((_) => onEmpty());
           }
           return Center(child: Text(strings.empty));
         }
-        final rows = <Widget>[
-          for (final section in group.sections) ...[
-            if (section.id case final id?)
-              sectionBuilder?.call(context, id) ??
+        final children = parent.ids.map(engine.byId).nonNulls.toList();
+        if (sort case final sort?) children.sort(sort);
+        final rows = <Widget>[];
+        String? current;
+        for (final (i, child) in children.indexed) {
+          final section = sectionOf?.call(child);
+          if (section != null && (i == 0 || section != current)) {
+            rows.add(
+              sectionBuilder?.call(context, section) ??
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                     child: Text(
-                      strings.section(id),
+                      section,
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                   ),
-            for (final id in section.ids)
-              itemBuilder?.call(context, id) ??
-                  HaulDownloadTile(key: ValueKey(id), id: id, onPlay: onPlay),
-          ],
-        ];
+            );
+          }
+          current = section;
+          rows.add(
+            itemBuilder?.call(context, child.id) ??
+                HaulDownloadTile(
+                  key: ValueKey(child.id),
+                  id: child.id,
+                  onPlay: onPlay,
+                ),
+          );
+        }
         return ListView(padding: padding, children: rows);
       },
     );
   }
 }
 
-/// The group's own actions, for an app bar: pause all, resume all,
-/// delete all (asked first).
-class HaulGroupActions extends StatelessWidget {
-  const HaulGroupActions({super.key, required this.group});
+/// A parent's own actions, for an app bar: pause all, resume all, delete
+/// all (asked first).
+class HaulParentActions extends StatelessWidget {
+  const HaulParentActions({super.key, required this.parent});
 
-  final DownloadGroup group;
+  final DownloadParent parent;
 
   @override
   Widget build(BuildContext context) {
@@ -384,15 +428,15 @@ class HaulGroupActions extends StatelessWidget {
       onSelected: (choice) async {
         switch (choice) {
           case 0:
-            await engine.pauseGroup(group.id);
+            await engine.pauseParent(parent.id);
           case 1:
-            await engine.resumeGroup(group.id);
+            await engine.resumeParent(parent.id);
           case 2:
-            final count = engine.group(group.id)?.ids.length ?? 0;
+            final count = engine.childrenOf(parent.id).length;
             final yes = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
-                content: Text(strings.deleteGroupConfirm(group.title, count)),
+                content: Text(strings.deleteParentConfirm(parent.title, count)),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(context, false),
@@ -405,7 +449,7 @@ class HaulGroupActions extends StatelessWidget {
                 ],
               ),
             );
-            if (yes ?? false) await engine.deleteGroup(group.id);
+            if (yes ?? false) await engine.deleteParent(parent.id);
         }
       },
       itemBuilder: (context) => [
