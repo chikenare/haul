@@ -58,13 +58,16 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  Widget app(Widget child, {HaulStrings? strings}) => HaulScope(
+  HaulController haulWith({HaulStrings? strings}) => HaulController(
     engine: engine,
     settings: settings,
     android: android,
     strings: strings,
-    child: MaterialApp(home: Scaffold(body: child)),
   );
+
+  HaulController haul() => haulWith();
+
+  Widget app(Widget child) => MaterialApp(home: Scaffold(body: child));
 
   Future<void> enqueue(WidgetTester tester, List<DownloadRequest> requests) =>
       tester.runAsync(() async {
@@ -83,7 +86,9 @@ void main() {
       ]);
       ParentDownloads? opened;
       await tester.pumpWidget(
-        app(HaulDownloadList(onOpenParent: (p) => opened = p)),
+        app(
+          HaulDownloadList(controller: haul(), onOpenParent: (p) => opened = p),
+        ),
       );
       await tester.pump();
 
@@ -99,7 +104,11 @@ void main() {
     testWidgets('empty says so, in the app strings', (tester) async {
       await tester.runAsync(engine.init);
       await tester.pumpWidget(
-        app(const HaulDownloadList(), strings: const HaulStringsEs()),
+        app(
+          HaulDownloadList(
+            controller: haulWith(strings: const HaulStringsEs()),
+          ),
+        ),
       );
       await tester.pump();
       expect(find.text(const HaulStringsEs().empty), findsOneWidget);
@@ -110,6 +119,7 @@ void main() {
       await tester.pumpWidget(
         app(
           HaulDownloadList(
+            controller: haul(),
             itemBuilder: (context, id) =>
                 Text('custom $id', key: const Key('row')),
           ),
@@ -119,6 +129,23 @@ void main() {
       expect(find.byKey(const Key('row')), findsOneWidget);
       expect(find.byType(HaulDownloadTile), findsNothing);
     });
+  });
+
+  testWidgets('HaulParentView says it is empty once, however often it '
+      'rebuilds', (tester) async {
+    var emptied = 0;
+    Widget view() => app(
+      HaulParentView(
+        controller: haul(),
+        parentId: 'nobody',
+        onEmpty: () => emptied++,
+      ),
+    );
+    await tester.pumpWidget(view());
+    await tester.pump();
+    await tester.pumpWidget(view());
+    await tester.pump();
+    expect(emptied, 1);
   });
 
   testWidgets('HaulParentView heads children with what the app says', (
@@ -132,6 +159,7 @@ void main() {
     await tester.pumpWidget(
       app(
         HaulParentView(
+          controller: haul(),
           parentId: 'loki',
           sectionOf: (r) => 'Season ${r.metadata['season']}',
         ),
@@ -158,6 +186,7 @@ void main() {
     await tester.pumpWidget(
       app(
         HaulParentView(
+          controller: haul(),
           parentId: 'loki',
           sort: (x, y) => y.title.compareTo(x.title),
         ),
@@ -173,7 +202,7 @@ void main() {
   testWidgets('the tile pauses with its primary button', (tester) async {
     await enqueue(tester, [_request('film')]);
     await tester.pumpWidget(
-      app(HaulDownloadTile(id: engine.records.single.id)),
+      app(HaulDownloadTile(controller: haul(), id: engine.records.single.id)),
     );
     await tester.pump();
 
@@ -195,6 +224,7 @@ void main() {
       await tester.pumpWidget(
         app(
           HaulDownloadTile(
+            controller: haul(),
             id: engine.records.single.id,
             menuItems: (context, record) => [
               HaulMenuItem(
@@ -232,6 +262,7 @@ void main() {
       await tester.pumpWidget(
         app(
           HaulParentActions(
+            controller: haul(),
             parent: _loki,
             menuItems: (context, parent) => [
               HaulMenuItem(
@@ -259,6 +290,7 @@ void main() {
     await tester.pumpWidget(
       app(
         HaulDownloadButton(
+          controller: haul(),
           downloadKey: 'film',
           onDownload: () async => asked++,
         ),
@@ -277,6 +309,7 @@ void main() {
       await tester.pumpWidget(
         app(
           HaulParentDownloadButton(
+            controller: haul(),
             parentId: 'loki',
             where: (r) => r.metadata['season'] == 1,
             onDownload: () async => asked++,
@@ -296,6 +329,7 @@ void main() {
       await tester.pumpWidget(
         app(
           HaulParentDownloadButton(
+            controller: haul(),
             parentId: 'loki',
             where: (r) => r.metadata['season'] == 1,
             onDownload: () async {},
@@ -329,7 +363,7 @@ void main() {
 
   group('HaulFormatTile', () {
     testWidgets('switches straight away by default', (tester) async {
-      await tester.pumpWidget(app(const HaulFormatTile()));
+      await tester.pumpWidget(app(HaulFormatTile(controller: haul())));
       await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
       expect(settings.value.merge, isTrue);
@@ -339,7 +373,9 @@ void main() {
       tester,
     ) async {
       android.free = 2000000000;
-      await tester.pumpWidget(app(const HaulFormatTile(confirm: true)));
+      await tester.pumpWidget(
+        app(HaulFormatTile(controller: haul(), confirm: true)),
+      );
       await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
 
@@ -376,7 +412,8 @@ void main() {
         app(
           Builder(
             builder: (context) => TextButton(
-              onPressed: () async => result = await ensureHaulSetup(context),
+              onPressed: () async =>
+                  result = await ensureHaulSetup(context, haul()),
               child: const Text('go'),
             ),
           ),
@@ -390,7 +427,7 @@ void main() {
       settings.value = const HaulSettings(setupDone: true);
       await tester.pumpWidget(app(const SizedBox()));
       final context = tester.element(find.byType(SizedBox));
-      expect(await ensureHaulSetup(context), isTrue);
+      expect(await ensureHaulSetup(context, haul()), isTrue);
       expect(find.byType(HaulSetupSheet), findsNothing);
     });
 
@@ -408,6 +445,14 @@ void main() {
       expect(settings.value.destination, const HaulDestination.app());
       expect(settings.value.setupDone, isTrue);
       expect(stored.last, settings.value);
+    });
+
+    testWidgets('accepting keeps what the sheet did not show', (tester) async {
+      await open(tester);
+      settings.update((s) => s.copyWith(wifiOnly: true));
+      await tapText(tester, const HaulStrings().download);
+      expect(settings.value.wifiOnly, isTrue);
+      expect(settings.value.setupDone, isTrue);
     });
 
     testWidgets('backing out changes nothing', (tester) async {
@@ -449,13 +494,13 @@ void main() {
     tester,
   ) async {
     android.batteryFree = true;
-    await tester.pumpWidget(app(const HaulBatteryTile()));
+    await tester.pumpWidget(app(HaulBatteryTile(controller: haul())));
     await tester.pump();
     expect(find.text(const HaulStrings().batteryAction), findsNothing);
     expect(find.text(const HaulStrings().batteryDone), findsOneWidget);
 
     android = FakeHaulAndroid(isAndroid: false);
-    await tester.pumpWidget(app(const HaulBatteryTile()));
+    await tester.pumpWidget(app(HaulBatteryTile(controller: haul())));
     expect(find.byType(ListTile), findsNothing);
   });
 }

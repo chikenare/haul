@@ -40,6 +40,12 @@ void main() {
         output: output,
       ),
     );
+    // Every piece handed over before they are completed.
+    await waitUntil(() {
+      final record = engine.byId(id)!;
+      return record.status == DownloadStatus.downloading &&
+          env.transfer.enqueued.length == record.progress.totalPieces;
+    });
     await env.transfer.completeAll();
     await waitForStatus(engine, id, DownloadStatus.done);
     return engine.byId(id)!;

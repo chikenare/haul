@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:haul/src/android/haul_android.dart';
 import 'package:haul/src/engine/haul_output_sink.dart';
-import 'package:haul/src/widgets/haul_scope.dart';
+import 'package:haul/src/widgets/haul_controller.dart';
 import 'package:haul/src/widgets/haul_settings.dart';
 
 bool get _desktop => switch (defaultTargetPlatform) {
@@ -14,19 +14,19 @@ bool get _desktop => switch (defaultTargetPlatform) {
 
 /// Whether the destination can be chosen here: Android, and desktop. iOS
 /// keeps files in the app.
-bool haulDestinationChoosable(HaulScope scope) =>
-    scope.android.isAndroid || _desktop;
+bool haulDestinationChoosable(HaulController controller) =>
+    controller.android.isAndroid || _desktop;
 
 /// Asks the platform for a folder: SAF on Android, the app's
-/// `HaulScope.pickDirectory` on desktop. Null when the user backs out or
+/// `HaulController.pickDirectory` on desktop. Null when the user backs out or
 /// there is no way to pick one.
 Future<HaulFolder?> pickHaulFolder(
-  HaulScope scope, {
+  HaulController controller, {
   HaulDestination? current,
 }) async {
-  if (scope.android.isAndroid) {
+  if (controller.android.isAndroid) {
     try {
-      return await scope.android.pickFolder(
+      return await controller.android.pickFolder(
         initialUri: switch (current) {
           FolderDestination(:final folder) => folder.uri,
           _ => null,
@@ -36,33 +36,28 @@ Future<HaulFolder?> pickHaulFolder(
       return null;
     }
   }
-  final path = await scope.pickDirectory?.call();
+  final path = await controller.pickDirectory?.call();
   return path == null ? null : HaulFolder(uri: path, name: path);
 }
 
-HaulSettingsController _settingsOf(BuildContext context) {
-  final settings = HaulScope.of(context).settings;
-  assert(settings != null, 'HaulScope.settings is needed here');
-  return settings!;
-}
-
-/// Follows [HaulScope.settings].
+/// Follows [HaulController.settings]; [builder] gets them to [edit].
 class _SettingsBuilder extends StatelessWidget {
-  const _SettingsBuilder({required this.builder});
+  const _SettingsBuilder({required this.controller, required this.builder});
 
+  final HaulController controller;
   final Widget Function(
     BuildContext context,
-    HaulSettingsController controller,
+    HaulSettingsController edit,
     HaulSettings settings,
   )
   builder;
 
   @override
   Widget build(BuildContext context) {
-    final controller = _settingsOf(context);
+    final edit = controller.requireSettings;
     return ValueListenableBuilder<HaulSettings>(
-      valueListenable: controller,
-      builder: (context, settings, _) => builder(context, controller, settings),
+      valueListenable: edit,
+      builder: (context, settings, _) => builder(context, edit, settings),
     );
   }
 }
@@ -71,16 +66,18 @@ class _SettingsBuilder extends StatelessWidget {
 class HaulFormatChoice extends StatelessWidget {
   const HaulFormatChoice({
     super.key,
+    required this.controller,
     required this.merge,
     required this.onChanged,
   });
 
+  final HaulController controller;
   final bool merge;
   final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final strings = HaulScope.stringsOf(context);
+    final strings = controller.stringsOf(context);
     return RadioGroup<bool>(
       groupValue: merge,
       onChanged: (value) => onChanged(value ?? false),
@@ -109,25 +106,27 @@ class HaulFormatChoice extends StatelessWidget {
 class HaulDestinationChoice extends StatelessWidget {
   const HaulDestinationChoice({
     super.key,
+    required this.controller,
     required this.destination,
     required this.onChanged,
   });
 
+  final HaulController controller;
   final HaulDestination destination;
   final ValueChanged<HaulDestination> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final scope = HaulScope.of(context);
-    final strings = HaulScope.stringsOf(context);
-    final canPick = scope.android.isAndroid || scope.pickDirectory != null;
+    final strings = controller.stringsOf(context);
+    final canPick =
+        controller.android.isAndroid || controller.pickDirectory != null;
     final folder = switch (destination) {
       FolderDestination(:final folder) => folder,
       _ => null,
     };
 
     Future<void> pick() async {
-      final picked = await pickHaulFolder(scope, current: destination);
+      final picked = await pickHaulFolder(controller, current: destination);
       if (picked != null) onChanged(HaulDestination.folder(picked));
     }
 
@@ -177,23 +176,31 @@ class HaulDestinationChoice extends StatelessWidget {
 /// Settings row: one file or the app's package. With [confirm], turning
 /// one file on asks first (see [confirmHaulFormatFile]).
 class HaulFormatTile extends StatelessWidget {
-  const HaulFormatTile({super.key, this.confirm = false});
+  const HaulFormatTile({
+    super.key,
+    required this.controller,
+    this.confirm = false,
+  });
 
+  final HaulController controller;
   final bool confirm;
 
   @override
   Widget build(BuildContext context) {
-    final strings = HaulScope.stringsOf(context);
+    final strings = controller.stringsOf(context);
     return _SettingsBuilder(
-      builder: (context, controller, settings) => SwitchListTile(
+      controller: controller,
+      builder: (context, edit, settings) => SwitchListTile(
         title: Text(strings.formatFile),
         subtitle: Text(strings.formatFileHint),
         value: settings.merge,
         onChanged: (merge) async {
-          if (merge && confirm && !await confirmHaulFormatFile(context)) {
+          if (merge &&
+              confirm &&
+              !await confirmHaulFormatFile(context, controller)) {
             return;
           }
-          controller.update((s) => s.copyWith(merge: merge));
+          edit.update((s) => s.copyWith(merge: merge));
         },
       ),
     );
@@ -203,10 +210,12 @@ class HaulFormatTile extends StatelessWidget {
 /// Before turning one file on: the file is put together at the end, with
 /// the app open, beside the pieces — and how much is free, when known.
 /// True when the user agreed.
-Future<bool> confirmHaulFormatFile(BuildContext context) async {
-  final scope = HaulScope.of(context);
-  final strings = HaulScope.stringsOf(context);
-  final free = await scope.android.freeBytes();
+Future<bool> confirmHaulFormatFile(
+  BuildContext context,
+  HaulController controller,
+) async {
+  final strings = controller.stringsOf(context);
+  final free = await controller.android.freeBytes();
   if (!context.mounted) return false;
   final yes = await showDialog<bool>(
     context: context,
@@ -244,38 +253,45 @@ Future<bool> confirmHaulFormatFile(BuildContext context) async {
 /// Settings row: where files go, opening the choice in a dialog. Says so
 /// when a picked folder can no longer be written to. Nothing on iOS.
 class HaulDestinationTile extends StatefulWidget {
-  const HaulDestinationTile({super.key});
+  const HaulDestinationTile({super.key, required this.controller});
+
+  final HaulController controller;
 
   @override
   State<HaulDestinationTile> createState() => _HaulDestinationTileState();
 }
 
 class _HaulDestinationTileState extends State<HaulDestinationTile> {
+  HaulController get controller => widget.controller;
+
   /// Whether the picked folder still takes files; read when it changes.
   bool _lost = false;
   String? _checked;
 
-  Future<void> _check(HaulScope scope, HaulDestination destination) async {
+  Future<void> _check(HaulDestination destination) async {
     final uri = switch (destination) {
-      FolderDestination(:final folder) when scope.android.isAndroid =>
+      FolderDestination(:final folder) when controller.android.isAndroid =>
         folder.uri,
       _ => null,
     };
     if (uri == _checked) return;
     _checked = uri;
-    final lost = uri != null && await scope.android.describeFolder(uri) == null;
-    if (mounted && lost != _lost) setState(() => _lost = lost);
+    final lost =
+        uri != null && await controller.android.describeFolder(uri) == null;
+    // Another folder was chosen meanwhile: its own check says.
+    if (!mounted || _checked != uri) return;
+    if (lost != _lost) setState(() => _lost = lost);
   }
 
   @override
   Widget build(BuildContext context) {
-    final scope = HaulScope.of(context);
-    if (!haulDestinationChoosable(scope)) return const SizedBox.shrink();
-    final strings = HaulScope.stringsOf(context);
+    if (!haulDestinationChoosable(controller)) return const SizedBox.shrink();
+    final strings = controller.stringsOf(context);
     return _SettingsBuilder(
-      builder: (context, controller, settings) {
+      controller: controller,
+      builder: (context, edit, settings) {
         final destination = settings.destination;
-        _check(scope, destination);
+        _check(destination);
         final label = switch (destination) {
           PublicDestination() => strings.destinationPublic,
           AppDestination() => strings.destinationApp,
@@ -295,10 +311,11 @@ class _HaulDestinationTileState extends State<HaulDestinationTile> {
               title: Text(strings.destination),
               contentPadding: const EdgeInsets.symmetric(vertical: 16),
               content: HaulDestinationChoice(
+                controller: controller,
                 destination: destination,
                 onChanged: (d) {
                   _checked = null;
-                  controller.update((s) => s.copyWith(destination: d));
+                  edit.update((s) => s.copyWith(destination: d));
                   Navigator.pop(dialog);
                 },
               ),
@@ -312,18 +329,21 @@ class _HaulDestinationTileState extends State<HaulDestinationTile> {
 
 /// Settings row: only on Wi-Fi.
 class HaulWifiOnlyTile extends StatelessWidget {
-  const HaulWifiOnlyTile({super.key});
+  const HaulWifiOnlyTile({super.key, required this.controller});
+
+  final HaulController controller;
 
   @override
   Widget build(BuildContext context) {
-    final strings = HaulScope.stringsOf(context);
+    final strings = controller.stringsOf(context);
     return _SettingsBuilder(
-      builder: (context, controller, settings) => SwitchListTile(
+      controller: controller,
+      builder: (context, edit, settings) => SwitchListTile(
         title: Text(strings.wifiOnly),
         subtitle: Text(strings.wifiOnlyHint),
         value: settings.wifiOnly,
         onChanged: (wifiOnly) =>
-            controller.update((s) => s.copyWith(wifiOnly: wifiOnly)),
+            edit.update((s) => s.copyWith(wifiOnly: wifiOnly)),
       ),
     );
   }
@@ -332,7 +352,13 @@ class HaulWifiOnlyTile extends StatelessWidget {
 /// Whether the battery saver leaves downloads alone, read again whenever
 /// the app comes back to the front (the system's dialog takes it out).
 class HaulBatteryBuilder extends StatefulWidget {
-  const HaulBatteryBuilder({super.key, required this.builder});
+  const HaulBatteryBuilder({
+    super.key,
+    required this.controller,
+    required this.builder,
+  });
+
+  final HaulController controller;
 
   /// [free] is null while it is being read.
   final Widget Function(BuildContext context, bool? free, VoidCallback ask)
@@ -345,22 +371,20 @@ class HaulBatteryBuilder extends StatefulWidget {
 class _HaulBatteryBuilderState extends State<HaulBatteryBuilder>
     with WidgetsBindingObserver {
   bool? _free;
-  HaulAndroid? _android;
+
+  HaulAndroid get _android => widget.controller.android;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _read();
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final android = HaulScope.of(context).android;
-    if (android != _android) {
-      _android = android;
-      _read();
-    }
+  void didUpdateWidget(HaulBatteryBuilder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller.android != _android) _read();
   }
 
   @override
@@ -375,7 +399,7 @@ class _HaulBatteryBuilderState extends State<HaulBatteryBuilder>
   }
 
   Future<void> _read() async {
-    final free = await _android!.isIgnoringBatteryOptimizations();
+    final free = await _android.isIgnoringBatteryOptimizations();
     if (mounted) setState(() => _free = free);
   }
 
@@ -383,22 +407,25 @@ class _HaulBatteryBuilderState extends State<HaulBatteryBuilder>
   Widget build(BuildContext context) => widget.builder(
     context,
     _free,
-    () => _android!.requestIgnoreBatteryOptimizations(),
+    () => _android.requestIgnoreBatteryOptimizations(),
   );
 }
 
 /// Settings row: let downloads run with the battery saver on. Only on
 /// Android.
 class HaulBatteryTile extends StatelessWidget {
-  const HaulBatteryTile({super.key});
+  const HaulBatteryTile({super.key, required this.controller});
+
+  final HaulController controller;
 
   @override
   Widget build(BuildContext context) {
-    if (!HaulScope.of(context).android.isAndroid) {
+    if (!controller.android.isAndroid) {
       return const SizedBox.shrink();
     }
-    final strings = HaulScope.stringsOf(context);
+    final strings = controller.stringsOf(context);
     return HaulBatteryBuilder(
+      controller: controller,
       builder: (context, free, ask) => ListTile(
         title: Text(strings.battery),
         subtitle: Text(strings.batteryHint),
@@ -417,29 +444,19 @@ class HaulBatteryTile extends StatelessWidget {
 /// and — on Android — to let downloads run with the battery saver on, and
 /// remembers it was asked. Answers whether to go on: true straight away
 /// once it was accepted, false when the user backs out. Needs
-/// [HaulScope.settings].
+/// [HaulController.settings].
 Future<bool> ensureHaulSetup(
-  BuildContext context, {
+  BuildContext context,
+  HaulController controller, {
   bool showWifiOnly = false,
 }) async {
-  final controller = _settingsOf(context);
-  if (controller.value.setupDone) return true;
-  final scope = HaulScope.of(context);
+  if (controller.requireSettings.value.setupDone) return true;
   final accepted = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    // The sheet is pushed above the scope's subtree on the root navigator:
-    // it gets the scope again explicitly.
-    builder: (_) => HaulScope(
-      engine: scope.engine,
-      settings: scope.settings,
-      strings: scope.strings,
-      android: scope.android,
-      pickDirectory: scope.pickDirectory,
-      canRetry: scope.canRetry,
-      child: HaulSetupSheet(showWifiOnly: showWifiOnly),
-    ),
+    builder: (_) =>
+        HaulSetupSheet(controller: controller, showWifiOnly: showWifiOnly),
   );
   return accepted ?? false;
 }
@@ -447,8 +464,13 @@ Future<bool> ensureHaulSetup(
 /// The sheet [ensureHaulSetup] shows. Choices are kept here until the user
 /// accepts, so backing out changes nothing.
 class HaulSetupSheet extends StatefulWidget {
-  const HaulSetupSheet({super.key, this.showWifiOnly = false});
+  const HaulSetupSheet({
+    super.key,
+    required this.controller,
+    this.showWifiOnly = false,
+  });
 
+  final HaulController controller;
   final bool showWifiOnly;
 
   @override
@@ -456,17 +478,26 @@ class HaulSetupSheet extends StatefulWidget {
 }
 
 class _HaulSetupSheetState extends State<HaulSetupSheet> {
-  late HaulSettings _draft = _settingsOf(context).value;
+  HaulController get controller => widget.controller;
+
+  late HaulSettings _draft = controller.requireSettings.value;
 
   void _accept() {
-    _settingsOf(context).update((_) => _draft.copyWith(setupDone: true));
+    // Only what the sheet showed: the rest may have changed meanwhile.
+    controller.requireSettings.update(
+      (s) => s.copyWith(
+        merge: _draft.merge,
+        destination: _draft.destination,
+        wifiOnly: widget.showWifiOnly ? _draft.wifiOnly : null,
+        setupDone: true,
+      ),
+    );
     Navigator.of(context).pop(true);
   }
 
   @override
   Widget build(BuildContext context) {
-    final scope = HaulScope.of(context);
-    final strings = HaulScope.stringsOf(context);
+    final strings = controller.stringsOf(context);
     final text = Theme.of(context).textTheme;
 
     Widget heading(String label) => Padding(
@@ -499,15 +530,17 @@ class _HaulSetupSheetState extends State<HaulSetupSheet> {
             ),
             heading(strings.format),
             HaulFormatChoice(
+              controller: controller,
               merge: _draft.merge,
               onChanged: (merge) =>
                   setState(() => _draft = _draft.copyWith(merge: merge)),
             ),
             // Where a file goes only matters for a file: a package always
             // stays in the app.
-            if (_draft.merge && haulDestinationChoosable(scope)) ...[
+            if (_draft.merge && haulDestinationChoosable(controller)) ...[
               heading(strings.destination),
               HaulDestinationChoice(
+                controller: controller,
                 destination: _draft.destination,
                 onChanged: (d) =>
                     setState(() => _draft = _draft.copyWith(destination: d)),
@@ -521,8 +554,9 @@ class _HaulSetupSheetState extends State<HaulSetupSheet> {
                 onChanged: (v) =>
                     setState(() => _draft = _draft.copyWith(wifiOnly: v)),
               ),
-            if (scope.android.isAndroid)
+            if (controller.android.isAndroid)
               HaulBatteryBuilder(
+                controller: controller,
                 builder: (context, free, ask) => free ?? true
                     ? const SizedBox.shrink()
                     : Column(

@@ -4,20 +4,27 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:haul/src/engine/model.dart';
 import 'package:haul/src/widgets/download_actions.dart';
-import 'package:haul/src/widgets/haul_scope.dart';
+import 'package:haul/src/widgets/haul_controller.dart';
 import 'package:haul/src/widgets/haul_strings.dart';
 
 /// Rebuilds with the download [id] on every change of it; null once it is
 /// gone. The base of every widget here, and of an app's own.
 class HaulRecordBuilder extends StatelessWidget {
-  const HaulRecordBuilder({super.key, required this.id, required this.builder});
+  const HaulRecordBuilder({
+    super.key,
+    required this.controller,
+    required this.id,
+    required this.builder,
+  });
+
+  final HaulController controller;
 
   final String id;
   final Widget Function(BuildContext context, DownloadRecord? record) builder;
 
   @override
   Widget build(BuildContext context) {
-    final engine = HaulScope.of(context).engine;
+    final engine = controller.engine;
     return HaulEngineBuilder<DownloadRecord?>(
       identity: (engine, id),
       stream: () => engine.watch(id),
@@ -32,16 +39,19 @@ class HaulRecordBuilder extends StatelessWidget {
 class HaulKeyBuilder extends StatelessWidget {
   const HaulKeyBuilder({
     super.key,
+    required this.controller,
     required this.downloadKey,
     required this.builder,
   });
+
+  final HaulController controller;
 
   final String downloadKey;
   final Widget Function(BuildContext context, DownloadRecord? record) builder;
 
   @override
   Widget build(BuildContext context) {
-    final engine = HaulScope.of(context).engine;
+    final engine = controller.engine;
     return HaulEngineBuilder<DownloadRecord?>(
       identity: (engine, downloadKey),
       stream: () =>
@@ -84,6 +94,8 @@ class _HaulEngineBuilderState<T> extends State<HaulEngineBuilder<T>> {
 
   @override
   Widget build(BuildContext context) => StreamBuilder<T>(
+    // Another identity starts from its own value, not the last one's.
+    key: ValueKey(widget.identity),
     stream: _stream,
     initialData: widget.current(),
     builder: (context, snapshot) => widget.builder(context, snapshot.data as T),
@@ -207,11 +219,14 @@ class _Ring extends StatelessWidget {
 class HaulDownloadButton extends StatelessWidget {
   const HaulDownloadButton({
     super.key,
+    required this.controller,
     required this.downloadKey,
     required this.onDownload,
     this.onPlay,
     this.builder,
   });
+
+  final HaulController controller;
 
   final String downloadKey;
   final Future<void> Function() onDownload;
@@ -227,19 +242,24 @@ class HaulDownloadButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scope = HaulScope.of(context);
-    final strings = HaulScope.stringsOf(context);
+    final strings = controller.stringsOf(context);
     return HaulKeyBuilder(
+      controller: controller,
       downloadKey: downloadKey,
       builder: (context, record) {
         final action = record == null
             ? null
-            : DownloadActions.of(record, canRetry: scope.canRetry).primary;
+            : DownloadActions.of(record, canRetry: controller.canRetry).primary;
         final VoidCallback? onPressed = record == null
             ? () => onDownload()
             : action == null
             ? null
-            : () => runHaulAction(scope.engine, record, action, play: onPlay);
+            : () => runHaulAction(
+                controller.engine,
+                record,
+                action,
+                play: onPlay,
+              );
         if (builder case final builder?) {
           return builder(context, record, onPressed);
         }
@@ -278,8 +298,12 @@ IconData _icon(HaulAction action) => switch (action) {
 };
 
 /// Asks before deleting [record]; true when the user agreed.
-Future<bool> confirmHaulDelete(BuildContext context, String title) async {
-  final strings = HaulScope.stringsOf(context);
+Future<bool> confirmHaulDelete(
+  BuildContext context,
+  HaulController controller,
+  String title,
+) async {
+  final strings = controller.stringsOf(context);
   final yes = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
@@ -350,10 +374,13 @@ List<PopupMenuEntry<Object>> _menuRows({
 class HaulActionsMenu extends StatelessWidget {
   const HaulActionsMenu({
     super.key,
+    required this.controller,
     required this.record,
     this.onPlay,
     this.menuItems,
   });
+
+  final HaulController controller;
 
   final DownloadRecord record;
   final void Function(DownloadRecord record)? onPlay;
@@ -363,9 +390,8 @@ class HaulActionsMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scope = HaulScope.of(context);
-    final strings = HaulScope.stringsOf(context);
-    final actions = DownloadActions.of(record, canRetry: scope.canRetry);
+    final strings = controller.stringsOf(context);
+    final actions = DownloadActions.of(record, canRetry: controller.canRetry);
     (Object, IconData, String) entry(HaulAction action) =>
         (action, _icon(action), _label(strings, action));
     return PopupMenuButton<Object>(
@@ -378,12 +404,12 @@ class HaulActionsMenu extends StatelessWidget {
           case HaulMenuItem(:final onSelected):
             await onSelected(context);
           case HaulAction.delete:
-            if (await confirmHaulDelete(context, record.title)) {
-              await runHaulAction(scope.engine, record, HaulAction.delete);
+            if (await confirmHaulDelete(context, controller, record.title)) {
+              await runHaulAction(controller.engine, record, HaulAction.delete);
             }
           case HaulAction.export:
             final error = await runHaulAction(
-              scope.engine,
+              controller.engine,
               record,
               HaulAction.export,
             );
@@ -395,7 +421,12 @@ class HaulActionsMenu extends StatelessWidget {
               ),
             );
           case final HaulAction action:
-            await runHaulAction(scope.engine, record, action, play: onPlay);
+            await runHaulAction(
+              controller.engine,
+              record,
+              action,
+              play: onPlay,
+            );
         }
       },
       itemBuilder: (menuContext) => _menuRows(
@@ -418,6 +449,7 @@ class HaulActionsMenu extends StatelessWidget {
 class HaulDownloadTile extends StatelessWidget {
   const HaulDownloadTile({
     super.key,
+    required this.controller,
     required this.id,
     this.onPlay,
     this.onTap,
@@ -428,6 +460,8 @@ class HaulDownloadTile extends StatelessWidget {
     this.showMenu = true,
     this.menuItems,
   });
+
+  final HaulController controller;
 
   final String id;
 
@@ -448,13 +482,16 @@ class HaulDownloadTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scope = HaulScope.of(context);
     return HaulRecordBuilder(
+      controller: controller,
       id: id,
       builder: (context, record) {
         if (record == null) return const SizedBox.shrink();
         final theme = HaulTheme.of(context);
-        final actions = DownloadActions.of(record, canRetry: scope.canRetry);
+        final actions = DownloadActions.of(
+          record,
+          canRetry: controller.canRetry,
+        );
         return InkWell(
           onTap: () {
             if (onTap case final onTap?) return onTap(record);
@@ -465,7 +502,7 @@ class HaulDownloadTile extends StatelessWidget {
             child: Row(
               children: [
                 leading?.call(context, record) ??
-                    _ProgressThumbnail(record: record),
+                    _ProgressThumbnail(controller: controller, record: record),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -480,18 +517,20 @@ class HaulDownloadTile extends StatelessWidget {
                           ),
                       const SizedBox(height: 4),
                       subtitle?.call(context, record) ??
-                          _Summary(record: record),
+                          _Summary(controller: controller, record: record),
                     ],
                   ),
                 ),
                 trailing?.call(context, record) ??
                     _PrimaryButton(
+                      controller: controller,
                       record: record,
                       actions: actions,
                       onPlay: onPlay,
                     ),
                 if (showMenu)
                   HaulActionsMenu(
+                    controller: controller,
                     record: record,
                     onPlay: onPlay,
                     menuItems: menuItems,
@@ -506,7 +545,9 @@ class HaulDownloadTile extends StatelessWidget {
 }
 
 class _ProgressThumbnail extends StatelessWidget {
-  const _ProgressThumbnail({required this.record});
+  const _ProgressThumbnail({required this.controller, required this.record});
+
+  final HaulController controller;
 
   final DownloadRecord record;
 
@@ -518,8 +559,7 @@ class _ProgressThumbnail extends StatelessWidget {
       children: [
         HaulThumbnail(
           imageUrl:
-              HaulScope.of(context).engine.imageOf(record) ??
-              record.parent?.imageUrl,
+              controller.engine.imageOf(record) ?? record.parent?.imageUrl,
         ),
         if (record.status != DownloadStatus.done)
           Positioned(
@@ -544,14 +584,15 @@ class _ProgressThumbnail extends StatelessWidget {
 }
 
 class _Summary extends StatelessWidget {
-  const _Summary({required this.record});
+  const _Summary({required this.controller, required this.record});
+
+  final HaulController controller;
 
   final DownloadRecord record;
 
   @override
   Widget build(BuildContext context) {
-    final scope = HaulScope.of(context);
-    final strings = HaulScope.stringsOf(context);
+    final strings = controller.stringsOf(context);
     final theme = Theme.of(context);
     final failed = record.status == DownloadStatus.failed;
     final style = theme.textTheme.bodySmall?.copyWith(
@@ -560,9 +601,9 @@ class _Summary extends StatelessWidget {
           : theme.colorScheme.onSurfaceVariant,
     );
     return HaulEngineBuilder<bool>(
-      identity: scope.engine,
-      stream: scope.engine.watchWaitingForWifi,
-      current: () => scope.engine.waitingForWifi,
+      identity: controller.engine,
+      stream: controller.engine.watchWaitingForWifi,
+      current: () => controller.engine.waitingForWifi,
       builder: (context, waiting) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -587,10 +628,13 @@ class _Summary extends StatelessWidget {
 
 class _PrimaryButton extends StatelessWidget {
   const _PrimaryButton({
+    required this.controller,
     required this.record,
     required this.actions,
     required this.onPlay,
   });
+
+  final HaulController controller;
 
   final DownloadRecord record;
   final DownloadActions actions;
@@ -610,9 +654,9 @@ class _PrimaryButton extends StatelessWidget {
             )
           : const SizedBox.shrink();
     }
-    final engine = HaulScope.of(context).engine;
+    final engine = controller.engine;
     return IconButton(
-      tooltip: _label(HaulScope.stringsOf(context), action),
+      tooltip: _label(controller.stringsOf(context), action),
       icon: Icon(_icon(action)),
       onPressed: () => runHaulAction(engine, record, action, play: onPlay),
     );

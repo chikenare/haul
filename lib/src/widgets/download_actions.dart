@@ -26,7 +26,7 @@ class DownloadActions {
   const DownloadActions._(this.primary, this.menu);
 
   /// [canRetry]: whether a failed one is worth retrying (see
-  /// `HaulScope.canRetry`); without it, it has no primary action.
+  /// `HaulController.canRetry`); without it, it has no primary action.
   factory DownloadActions.of(
     DownloadRecord record, {
     bool Function(DownloadError error)? canRetry,

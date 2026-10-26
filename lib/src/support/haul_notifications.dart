@@ -148,9 +148,16 @@ class HaulNotifications {
     }
   }
 
-  /// Away from background_downloader's (the hash of a task id).
-  static int _idOf(String downloadId) =>
-      0x5D0000 + (downloadId.hashCode & 0xFFFF);
+  /// Away from background_downloader's (the hash of a task id). The same
+  /// on every run, unlike `String.hashCode`: a failure shown by the last
+  /// run is still cancelled.
+  static int _idOf(String downloadId) {
+    var hash = 0x811c9dc5;
+    for (final unit in downloadId.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    return 0x5D0000 + (hash & 0xFFFF);
+  }
 
   Future<void> _progress(DownloadRecord record) async {
     if (!_ready) return;

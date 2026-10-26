@@ -8,7 +8,7 @@ import 'package:haul/src/planner/errors.dart';
 ///
 /// To change any of them — or add a language — extend this class (or
 /// [HaulStringsEs]) and override what differs, then hand it to
-/// `HaulScope(strings:)`. [error] is where an app's own error codes (from a
+/// `HaulController(strings:)`. [error] is where an app's own error codes (from a
 /// `RefreshException`) get their text.
 class HaulStrings {
   const HaulStrings();

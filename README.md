@@ -237,14 +237,19 @@ final engine = DownloadEngine(
   …
 );
 
-HaulScope(
+// One, at start, kept however the app keeps its state (a Riverpod
+// provider, a service locator…).
+final haul = HaulController(
   engine: engine,
   settings: settings,
   strings: const MyStrings(), // optional; en/es built in
   canRetry: (e) => e.code != 'quota', // the app's codes a retry won't fix
   pickDirectory: myDesktopPicker, // desktop only; Android uses SAF
-  child: MaterialApp(…),
 );
+
+// Handed to each widget where it shows.
+HaulDownloadList(controller: haul, onPlay: play);
+HaulDestinationTile(controller: haul);
 ```
 
 - **Default widgets**: `HaulDownloadList` (parents as one row,
@@ -256,7 +261,7 @@ HaulScope(
   `HaulParentProgressIcon` / `HaulParentProgressBuilder`;
   `HaulDownloadTile`, `HaulDownloadButton(downloadKey, onDownload)`,
   `HaulProgressIcon`, `HaulActionsMenu`, `HaulThumbnail`;
-  `ensureHaulSetup(context)` before the first download; `HaulFormatTile`
+  `ensureHaulSetup(context, haul)` before the first download; `HaulFormatTile`
   (`confirm: true` asks before one file), `HaulDestinationTile`,
   `HaulWifiOnlyTile`, `HaulBatteryTile` for a settings page.
 - **The app's own actions**: `menuItems: (context, record) => [HaulMenuItem(

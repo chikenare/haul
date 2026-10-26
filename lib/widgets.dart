@@ -7,7 +7,7 @@ library;
 
 export 'src/widgets/download_actions.dart';
 export 'src/widgets/download_widgets.dart';
-export 'src/widgets/haul_scope.dart';
+export 'src/widgets/haul_controller.dart';
 export 'src/widgets/haul_settings.dart';
 export 'src/widgets/haul_strings.dart';
 export 'src/widgets/parent_widgets.dart';

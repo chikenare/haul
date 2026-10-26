@@ -30,10 +30,11 @@ class HttpImageFetcher implements ImageFetcher {
         return false;
       }
       await temp.parent.create(recursive: true);
-      // Closed whatever happens: a timed-out pipe left the file open.
+      // The response itself times out, so the sink is never left bound
+      // to it and always closes: the file is not kept open.
       final sink = temp.openWrite();
       try {
-        await sink.addStream(response).timeout(timeout);
+        await sink.addStream(response.timeout(timeout));
       } finally {
         await sink.close();
       }

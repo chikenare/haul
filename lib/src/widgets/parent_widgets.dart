@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:haul/src/engine/model.dart';
 import 'package:haul/src/engine/parents.dart';
 import 'package:haul/src/widgets/download_widgets.dart';
-import 'package:haul/src/widgets/haul_scope.dart';
+import 'package:haul/src/widgets/haul_controller.dart';
 
 /// Every download, a parent as one row with its children inside, newest
 /// first. Rebuilt only when a download comes, goes or moves; each row
@@ -10,6 +10,7 @@ import 'package:haul/src/widgets/haul_scope.dart';
 class HaulDownloadList extends StatelessWidget {
   const HaulDownloadList({
     super.key,
+    required this.controller,
     this.onPlay,
     this.onOpenParent,
     this.itemBuilder,
@@ -18,6 +19,8 @@ class HaulDownloadList extends StatelessWidget {
     this.padding,
     this.menuItems,
   });
+
+  final HaulController controller;
 
   final void Function(DownloadRecord record)? onPlay;
 
@@ -41,7 +44,7 @@ class HaulDownloadList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final engine = HaulScope.of(context).engine;
+    final engine = controller.engine;
     return HaulEngineBuilder<List<DownloadEntry>>(
       identity: engine,
       stream: engine.watchEntries,
@@ -49,7 +52,7 @@ class HaulDownloadList extends StatelessWidget {
       builder: (context, entries) {
         if (entries.isEmpty) {
           return empty ??
-              Center(child: Text(HaulScope.stringsOf(context).empty));
+              Center(child: Text(controller.stringsOf(context).empty));
         }
         return ListView.builder(
           padding: padding,
@@ -59,6 +62,7 @@ class HaulDownloadList extends StatelessWidget {
               itemBuilder?.call(context, id) ??
                   HaulDownloadTile(
                     key: ValueKey(id),
+                    controller: controller,
                     id: id,
                     onPlay: onPlay,
                     menuItems: menuItems,
@@ -67,6 +71,7 @@ class HaulDownloadList extends StatelessWidget {
               parentBuilder?.call(context, parent) ??
                   HaulParentTile(
                     key: ValueKey('parent:${parent.parent.id}'),
+                    controller: controller,
                     parent: parent,
                     onTap: onOpenParent == null
                         ? null
@@ -83,9 +88,12 @@ class HaulDownloadList extends StatelessWidget {
 class HaulRecordsBuilder extends StatelessWidget {
   const HaulRecordsBuilder({
     super.key,
+    required this.controller,
     required this.ids,
     required this.builder,
   });
+
+  final HaulController controller;
 
   final List<String> ids;
   final Widget Function(BuildContext context, List<DownloadRecord> records)
@@ -93,7 +101,7 @@ class HaulRecordsBuilder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final engine = HaulScope.of(context).engine;
+    final engine = controller.engine;
     List<DownloadRecord> read() => [for (final id in ids) ?engine.byId(id)];
     return HaulEngineBuilder<List<DownloadRecord>>(
       identity: (engine, Object.hashAll(ids)),
@@ -108,9 +116,12 @@ class HaulRecordsBuilder extends StatelessWidget {
 class HaulChildrenBuilder extends StatelessWidget {
   const HaulChildrenBuilder({
     super.key,
+    required this.controller,
     required this.parentId,
     required this.builder,
   });
+
+  final HaulController controller;
 
   final String parentId;
   final Widget Function(BuildContext context, List<DownloadRecord> children)
@@ -118,7 +129,7 @@ class HaulChildrenBuilder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final engine = HaulScope.of(context).engine;
+    final engine = controller.engine;
     return HaulEngineBuilder<List<DownloadRecord>>(
       identity: (engine, parentId),
       stream: () => engine.watchChildren(parentId),
@@ -133,10 +144,13 @@ class HaulChildrenBuilder extends StatelessWidget {
 class HaulParentProgressBuilder extends StatelessWidget {
   const HaulParentProgressBuilder({
     super.key,
+    required this.controller,
     required this.parentId,
     this.where,
     required this.builder,
   });
+
+  final HaulController controller;
 
   final String parentId;
   final bool Function(DownloadRecord record)? where;
@@ -144,6 +158,7 @@ class HaulParentProgressBuilder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => HaulChildrenBuilder(
+    controller: controller,
     parentId: parentId,
     builder: (context, children) => builder(
       context,
@@ -212,11 +227,14 @@ class HaulParentProgressIcon extends StatelessWidget {
 class HaulParentDownloadButton extends StatelessWidget {
   const HaulParentDownloadButton({
     super.key,
+    required this.controller,
     required this.parentId,
     this.where,
     required this.onDownload,
     this.builder,
   });
+
+  final HaulController controller;
 
   final String parentId;
   final bool Function(DownloadRecord record)? where;
@@ -232,9 +250,10 @@ class HaulParentDownloadButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final engine = HaulScope.of(context).engine;
-    final strings = HaulScope.stringsOf(context);
+    final engine = controller.engine;
+    final strings = controller.stringsOf(context);
     return HaulParentProgressBuilder(
+      controller: controller,
       parentId: parentId,
       where: where,
       builder: (context, progress) {
@@ -267,18 +286,26 @@ class HaulParentDownloadButton extends StatelessWidget {
 /// A parent's row: its picture, its title, how many children it holds and
 /// how far along they are.
 class HaulParentTile extends StatelessWidget {
-  const HaulParentTile({super.key, required this.parent, this.onTap});
+  const HaulParentTile({
+    super.key,
+    required this.controller,
+    required this.parent,
+    this.onTap,
+  });
+
+  final HaulController controller;
 
   final ParentDownloads parent;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final engine = HaulScope.of(context).engine;
-    final strings = HaulScope.stringsOf(context);
+    final engine = controller.engine;
+    final strings = controller.stringsOf(context);
     final theme = HaulTheme.of(context);
     final text = Theme.of(context).textTheme;
     return HaulParentProgressBuilder(
+      controller: controller,
       parentId: parent.parent.id,
       builder: (context, progress) {
         final image =
@@ -353,6 +380,7 @@ class HaulParentTile extends StatelessWidget {
 class HaulParentView extends StatelessWidget {
   const HaulParentView({
     super.key,
+    required this.controller,
     required this.parentId,
     this.onPlay,
     this.sectionOf,
@@ -363,6 +391,8 @@ class HaulParentView extends StatelessWidget {
     this.padding,
     this.menuItems,
   });
+
+  final HaulController controller;
 
   final String parentId;
   final void Function(DownloadRecord record)? onPlay;
@@ -381,18 +411,18 @@ class HaulParentView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final engine = HaulScope.of(context).engine;
-    final strings = HaulScope.stringsOf(context);
+    final engine = controller.engine;
+    final strings = controller.stringsOf(context);
     return HaulEngineBuilder<ParentDownloads?>(
       identity: (engine, parentId),
       stream: () => engine.watchParent(parentId),
       current: () => engine.parent(parentId),
       builder: (context, parent) {
         if (parent == null) {
-          if (onEmpty case final onEmpty?) {
-            WidgetsBinding.instance.addPostFrameCallback((_) => onEmpty());
-          }
-          return Center(child: Text(strings.empty));
+          return _EmptyOnce(
+            onEmpty: onEmpty,
+            child: Center(child: Text(strings.empty)),
+          );
         }
         final children = parent.ids.map(engine.byId).nonNulls.toList();
         if (sort case final sort?) children.sort(sort);
@@ -417,6 +447,7 @@ class HaulParentView extends StatelessWidget {
             itemBuilder?.call(context, child.id) ??
                 HaulDownloadTile(
                   key: ValueKey(child.id),
+                  controller: controller,
                   id: child.id,
                   onPlay: onPlay,
                   menuItems: menuItems,
@@ -432,15 +463,22 @@ class HaulParentView extends StatelessWidget {
 /// A parent's own actions, for an app bar: pause all, resume all, the
 /// app's [menuItems], delete all (asked first).
 class HaulParentActions extends StatelessWidget {
-  const HaulParentActions({super.key, required this.parent, this.menuItems});
+  const HaulParentActions({
+    super.key,
+    required this.controller,
+    required this.parent,
+    this.menuItems,
+  });
+
+  final HaulController controller;
 
   final DownloadParent parent;
   final HaulMenuItems<DownloadParent>? menuItems;
 
   @override
   Widget build(BuildContext context) {
-    final engine = HaulScope.of(context).engine;
-    final strings = HaulScope.stringsOf(context);
+    final engine = controller.engine;
+    final strings = controller.stringsOf(context);
     return PopupMenuButton<Object>(
       onSelected: (choice) async {
         switch (choice) {
@@ -492,3 +530,28 @@ class HaulParentActions extends StatelessWidget {
 }
 
 enum _ParentAction { pause, resume, delete }
+
+/// [child], running [onEmpty] once after it first shows — not on every
+/// rebuild while it stays: a second `pop` would close the screen below.
+class _EmptyOnce extends StatefulWidget {
+  const _EmptyOnce({required this.onEmpty, required this.child});
+
+  final VoidCallback? onEmpty;
+  final Widget child;
+
+  @override
+  State<_EmptyOnce> createState() => _EmptyOnceState();
+}
+
+class _EmptyOnceState extends State<_EmptyOnce> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onEmpty?.call();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}

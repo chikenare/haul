@@ -9,7 +9,7 @@
 - Android plugin (`HaulAndroid`): SAF folders, `content://` files, battery
   saver.
 - `HaulDestination` and `HaulOutputSink` (public, app only, picked folder).
-- `package:haul/widgets.dart`: scope, settings, strings (en/es), theme,
+- `package:haul/widgets.dart`: controller, settings, strings (en/es), theme,
   actions and default widgets, all replaceable.
 - `updateDetails` and re-enqueueing give older downloads a parent;
   `HaulParentView` (headings and order from the app), `HaulParentTile`,
@@ -40,6 +40,10 @@
 - `HaulPermissions` (notifications, shared storage up to Android 9) and
   `HaulAndroid.openNotificationSettings`.
 - `HaulSettingsStore` (shared_preferences), optional.
+- `HaulController` replaces `HaulScope`: each widget takes `controller:`,
+  which the app keeps however it keeps its state; `ensureHaulSetup`,
+  `confirmHaulDelete`, `confirmHaulFormatFile`, `pickHaulFolder` and
+  `haulDestinationChoosable` take it too.
 
 ## 0.1.0
 

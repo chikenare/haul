@@ -1863,8 +1863,10 @@ class DownloadEngine {
   static const _thumbnailFile = 'thumbnail.jpg';
 
   /// Whether what is left of [plan] cannot fit: what is still to fetch
-  /// and, for one file, the file merged beside the pieces. Unknown — no
-  /// weight, or no reading of the free space — fits.
+  /// and, for one file, its size again — merged beside the pieces, or
+  /// copied by the sink to a shared folder before the original goes; even
+  /// a file that is only renamed is copied there. Unknown — no weight, or
+  /// no reading of the free space — fits.
   Future<bool> _lacksSpace(
     DownloadPlan plan,
     int settledBytes,
@@ -1915,11 +1917,12 @@ class DownloadEngine {
       final file = File(p.join(_workDir(id).path, name));
       if (!await file.exists() && !await fetcher.fetch(url, file)) return;
       final current = _records[id];
-      if (_disposed || current == null) {
+      if (current == null) {
         // Deleted meanwhile: its folder went before this file came back.
         await _deleteQuietly(_workDir(id));
         return;
       }
+      if (_disposed) return;
       if (current.imageUrl != url) return;
       _put(current.copyWith(imageLocator: '$_workPrefix$name'));
       await for (final entity in _workDir(id).list()) {

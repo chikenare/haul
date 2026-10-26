@@ -9,19 +9,18 @@ import 'package:haul/src/widgets/haul_strings.dart';
 /// user backs out.
 typedef DirectoryPicker = Future<String?> Function();
 
-/// What haul's widgets below it share: the engine, the user's settings,
-/// and how the app wants things said and done. Put it once above the
-/// screens that show downloads.
-class HaulScope extends InheritedWidget {
-  const HaulScope({
-    super.key,
+/// What haul's widgets work with: the engine, the user's settings, and how
+/// the app wants things said and done. The app makes one — at start, next
+/// to its engine — keeps it however it keeps its state (Riverpod, a
+/// singleton…) and hands it to each widget as `controller:`.
+class HaulController {
+  HaulController({
     required this.engine,
     this.settings,
     this.strings,
     this.android = HaulAndroid.i,
     this.pickDirectory,
     this.canRetry,
-    required super.child,
   });
 
   final DownloadEngine engine;
@@ -42,27 +41,18 @@ class HaulScope extends InheritedWidget {
   /// (an allowance spent).
   final bool Function(DownloadError error)? canRetry;
 
-  static HaulScope of(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<HaulScope>();
-    assert(scope != null, 'No HaulScope above this widget');
-    return scope!;
-  }
-
-  /// [strings], or the built-in ones for the app's locale.
-  static HaulStrings stringsOf(BuildContext context) =>
-      of(context).strings ??
+  /// [strings], or the built-in ones for the locale of [context].
+  HaulStrings stringsOf(BuildContext context) =>
+      strings ??
       HaulStrings.forLocale(
         Localizations.maybeLocaleOf(context) ?? const Locale('en'),
       );
 
-  @override
-  bool updateShouldNotify(HaulScope oldWidget) =>
-      engine != oldWidget.engine ||
-      settings != oldWidget.settings ||
-      strings != oldWidget.strings ||
-      android != oldWidget.android ||
-      pickDirectory != oldWidget.pickDirectory ||
-      canRetry != oldWidget.canRetry;
+  /// [settings], for the widgets that cannot do without them.
+  HaulSettingsController get requireSettings {
+    assert(settings != null, 'HaulController.settings is needed here');
+    return settings!;
+  }
 }
 
 /// How haul's widgets look, on top of the app's `ThemeData` — colours and

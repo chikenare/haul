@@ -2,12 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:haul/haul.dart';
-import 'package:haul/widgets.dart';
+import 'package:haul_example/main.dart' show haul;
 import 'package:video_player/video_player.dart';
 
 /// Opens a finished download: its path, or its `content://` URI.
 Future<void> openPlayer(BuildContext context, DownloadRecord record) async {
-  final playable = await HaulScope.of(context).engine.playable(record);
+  final playable = await haul.engine.playable(record);
   if (playable == null || !context.mounted) return;
   await Navigator.of(context).push(
     MaterialPageRoute<void>(

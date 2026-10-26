@@ -368,5 +368,20 @@ void main() {
         isFalse,
       );
     });
+
+    test('an engine disposed while it is fetched leaves the download as it '
+        'is', () async {
+      final images = FakeImageFetcher()..gate = Completer<void>();
+      final engine = await env.engine(json: true, images: images);
+      final result = await engine.enqueue(request(imageUrl: poster));
+      await waitUntil(() => images.fetched.isNotEmpty);
+
+      await engine.dispose();
+      images.gate!.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final again = await env.engine(json: true);
+      expect(again.byId(result.id), isNotNull);
+    });
   });
 }

@@ -85,10 +85,14 @@ class HaulSettingsController extends ValueNotifier<HaulSettings> {
   /// Called with every new value, to store it.
   final void Function(HaulSettings settings)? onChanged;
 
-  late final ValueListenable<bool> wifiOnly = _Selected(
-    this,
-    (s) => s.wifiOnly,
-  );
+  late final ValueListenable<bool> wifiOnly = _wifiOnly;
+  late final _wifiOnly = _Selected(this, (HaulSettings s) => s.wifiOnly);
+
+  @override
+  void dispose() {
+    _wifiOnly.dispose();
+    super.dispose();
+  }
 
   void update(HaulSettings Function(HaulSettings settings) change) {
     final next = change(value);
