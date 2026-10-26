@@ -48,17 +48,25 @@
   (`TransferClient.unlisten`), and a retried init no longer gets every
   update twice: in a namespace the plugin chained each new callback after
   the old ones.
-- Where files go is no longer a choice in a dialog: `HaulDestinationTile`
-  says the default folder and opens the picker straight away on a tap (SAF
-  on Android, which is what grants writing there), with a button back to
-  the default; `HaulSetupSheet` no longer asks it. `HaulDestinationChoice`
-  is gone, and so are the strings only it used (`destinationPublic*`,
-  `destinationAppHint`, `destinationFolder*`, `changeFolder`);
-  `destinationDefault` and `useDefaultFolder` are new.
-- `HaulOutputSink(publicRoot:)` is used on Android too: given, the default
-  destination is that folder (say path_provider's `getDownloadsDirectory`,
-  no permission needed), as plain files; null keeps the public Downloads
-  through MediaStore.
+- haul does the work and takes values; screens, settings and permissions
+  are the app's, as with background_downloader. Gone: `HaulSettings`,
+  `HaulSettingsController`, `HaulSettingsStore`, the settings rows
+  (`HaulFormatTile`, `HaulDestinationTile`, `HaulWifiOnlyTile`,
+  `HaulBatteryTile`, `HaulBatteryBuilder`), `HaulSetupSheet`,
+  `ensureHaulSetup`, `confirmHaulFormatFile`, `HaulFormatChoice`,
+  `pickHaulFolder`, `haulDestinationChoosable`, the catalogue buttons
+  (`HaulDownloadButton`, `HaulParentDownloadButton`, `HaulParentProgressIcon`,
+  `HaulKeyBuilder`, `HaulRecordsBuilder`, `HaulProgressIcon`),
+  `HaulController.settings`/`pickDirectory`/`requireSettings`,
+  `HaulPermissions.enableNotifications`, and on Android picking folders
+  with SAF, writing into them and the battery saver.
+- `package:haul/widgets.dart` is the downloads list only: `HaulDownloadList`,
+  `HaulParentView`, `HaulParentActions`, `HaulMenuItem`, `HaulController`,
+  `HaulTheme`, `HaulStrings`. Rows and menus are its own.
+- `HaulOutputSink(folder:)`: the folder the app gives, as a path; null, the
+  platform's default (MediaStore on Android, Downloads on desktop, Documents
+  on iOS). Replaces `destination:`/`HaulDestination`/`HaulFolder` and
+  `publicRoot:`. A folder that cannot be written falls back to the default.
 
 ## 0.1.0
 
