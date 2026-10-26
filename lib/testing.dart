@@ -314,28 +314,17 @@ class RecordingLogger implements EngineLogger {
   }) => errors.add(error);
 }
 
-/// Android's side as a test sets it: folders that can or cannot be
-/// written, files that exist, the battery saver's answer.
+/// Android's side as a test sets it: files that exist, their paths, the
+/// free space.
 class FakeHaulAndroid implements HaulAndroid {
-  FakeHaulAndroid({this.isAndroid = true, this.batteryFree = false});
+  FakeHaulAndroid({this.isAndroid = true});
 
   @override
   final bool isAndroid;
 
-  bool batteryFree;
-  int batteryRequests = 0;
-
-  /// What [pickFolder] answers next.
-  HaulFolder? picked;
-
-  /// Folders [saveToFolder] can no longer write to.
-  final revoked = <String>{};
-
-  /// `(folderUri, relativeName)` of every save.
-  final saved = <(String, String)>[];
   final deleted = <String>[];
 
-  /// URIs that [exists] answers true for; saves add theirs.
+  /// URIs that [exists] answers true for.
   final existing = <String>{};
 
   /// What [pathOf] answers for each URI; null for any other.
@@ -343,30 +332,6 @@ class FakeHaulAndroid implements HaulAndroid {
 
   /// What [freeBytes] answers.
   int? free;
-
-  @override
-  Future<HaulFolder?> pickFolder({String? initialUri}) async => picked;
-
-  @override
-  Future<HaulFolder?> describeFolder(String uri) async => revoked.contains(uri)
-      ? null
-      : HaulFolder(uri: uri, name: Uri.decodeComponent(uri.split('/').last));
-
-  @override
-  Future<String> saveToFolder({
-    required String folderUri,
-    required File file,
-    required String relativeName,
-  }) async {
-    if (revoked.contains(folderUri)) {
-      throw PlatformException(code: 'io', message: 'no grant');
-    }
-    saved.add((folderUri, relativeName));
-    await file.delete();
-    final uri = '$folderUri/document/${Uri.encodeComponent(relativeName)}';
-    existing.add(uri);
-    return uri;
-  }
 
   @override
   Future<bool> exists(String uri) async => existing.contains(uri);
@@ -382,21 +347,6 @@ class FakeHaulAndroid implements HaulAndroid {
 
   @override
   Future<int?> freeBytes() async => free;
-
-  @override
-  Future<bool> isIgnoringBatteryOptimizations() async => batteryFree;
-
-  @override
-  Future<void> requestIgnoreBatteryOptimizations() async {
-    batteryRequests++;
-  }
-
-  int notificationSettingsOpened = 0;
-
-  @override
-  Future<void> openNotificationSettings() async {
-    notificationSettingsOpened++;
-  }
 }
 
 /// Writes a small JPEG where a frame would go; [fail] plays a video it

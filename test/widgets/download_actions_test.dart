@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:haul/haul.dart';
+import 'package:haul/src/widgets/download_actions.dart';
 import 'package:haul/widgets.dart';
 
 DownloadRecord _record(
@@ -159,12 +160,12 @@ void main() {
         HaulStrings.forLocale(const Locale('es', 'AR')),
         isA<HaulStringsEs>(),
       );
-      expect(HaulStrings.forLocale(const Locale('fr')).download, 'Download');
+      expect(HaulStrings.forLocale(const Locale('fr')).pause, 'Pause');
     });
 
     test('an app overrides what it wants, app codes included', () {
       const strings = _AppStrings();
-      expect(strings.download, 'Bajar');
+      expect(strings.delete, 'Borrar');
       expect(strings.pause, 'Pausar');
       expect(strings.error(const DownloadError(code: 'quota')), 'Sin cupo');
       expect(
@@ -179,7 +180,7 @@ class _AppStrings extends HaulStringsEs {
   const _AppStrings();
 
   @override
-  String get download => 'Bajar';
+  String get delete => 'Borrar';
 
   @override
   String error(DownloadError error) =>

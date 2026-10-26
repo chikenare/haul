@@ -2,93 +2,12 @@ import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:haul/src/android/haul_android.dart';
 import 'package:haul/src/engine/extension_points.dart';
 import 'package:haul/src/engine/model.dart';
 import 'package:haul/src/engine/output_sinks.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-
-/// Where the user wants finished files, as a setting the app keeps (see
-/// [toJson]).
-@immutable
-sealed class HaulDestination {
-  const HaulDestination();
-
-  /// Where file managers show it, with no permission asked: on Android the
-  /// public Downloads (or Movies) through MediaStore; on desktop the user's
-  /// Downloads; on iOS the app's Documents, which the Files app shows when
-  /// the app turns file sharing on.
-  const factory HaulDestination.public() = PublicDestination;
-
-  /// Only inside the app: nothing else sees it, and it goes with the app.
-  const factory HaulDestination.app() = AppDestination;
-
-  /// A folder the user picked: a SAF tree on Android ([HaulFolder.uri]), a
-  /// path elsewhere.
-  const factory HaulDestination.folder(HaulFolder folder) = FolderDestination;
-
-  factory HaulDestination.fromJson(Map<String, Object?> json) =>
-      switch (json['type']) {
-        'app' => const AppDestination(),
-        'folder' => FolderDestination(
-          HaulFolder(
-            uri: json['uri']! as String,
-            name: json['name'] as String? ?? json['uri']! as String,
-          ),
-        ),
-        _ => const PublicDestination(),
-      };
-
-  Map<String, Object?> toJson();
-}
-
-final class PublicDestination extends HaulDestination {
-  const PublicDestination();
-
-  @override
-  Map<String, Object?> toJson() => {'type': 'public'};
-
-  @override
-  bool operator ==(Object other) => other is PublicDestination;
-
-  @override
-  int get hashCode => 1;
-}
-
-final class AppDestination extends HaulDestination {
-  const AppDestination();
-
-  @override
-  Map<String, Object?> toJson() => {'type': 'app'};
-
-  @override
-  bool operator ==(Object other) => other is AppDestination;
-
-  @override
-  int get hashCode => 2;
-}
-
-final class FolderDestination extends HaulDestination {
-  const FolderDestination(this.folder);
-
-  final HaulFolder folder;
-
-  @override
-  Map<String, Object?> toJson() => {
-    'type': 'folder',
-    'uri': folder.uri,
-    'name': folder.name,
-  };
-
-  @override
-  bool operator ==(Object other) =>
-      other is FolderDestination && other.folder == folder;
-
-  @override
-  int get hashCode => folder.hashCode;
-}
 
 /// Moves [file] into the shared [storage] under [directory] and answers
 /// its `content://` URI — or its path on Android 9 and older — or null
@@ -100,45 +19,45 @@ typedef SharedStorageMover =
       String directory,
     );
 
-/// The sink for a [HaulDestination], read when each file is published, so
-/// a change in the settings applies to what finishes next.
+/// Where finished files go: into the folder the app gives as [folder] —
+/// the one the user picked in the app — or, while it answers null, the
+/// platform's default, which needs no permission: on Android the public
+/// Downloads through MediaStore, on desktop the user's Downloads, on iOS
+/// the app's Documents. Read at each publish, so a change applies to what
+/// finishes next.
 ///
-/// [HaulDestination.public] goes into the folder `publicRoot` answers,
-/// when the app gives one — say path_provider's `getDownloadsDirectory`,
-/// which needs no permission. Without it, the user's Downloads on desktop,
-/// the app's Documents on iOS, and on Android the public Downloads through
-/// MediaStore. A picked folder cannot be written with plain file access on
-/// Android: files go through SAF there. When a picked folder can no
-/// longer be written (the grant was revoked, the card is out) the file goes
-/// public, and when that fails too, it stays in the app — a finished
+/// When the folder cannot be written to (the card is out, Android refuses
+/// a folder outside the ones an app may write by path) the file goes to the
+/// default, and when that fails too it stays in the app — a finished
 /// download is never lost to a setting.
 class HaulOutputSink implements ReservingOutputSink {
   HaulOutputSink({
-    required this.destination,
+    this.folder,
     this.subfolder = '',
     this.sharedStorage = SharedStorage.downloads,
     HaulAndroid android = HaulAndroid.i,
     SharedStorageMover? moveToShared,
-    Future<String?> Function()? publicRoot,
+    @visibleForTesting Future<String?> Function()? defaultFolder,
     TargetPlatform? platform,
   }) : _android = android,
        _moveToShared = moveToShared ?? _mediaStoreMove,
-       _publicRoot = publicRoot,
+       _defaultFolder = defaultFolder ?? _platformDefault,
        _platform = platform;
 
-  final Future<HaulDestination> Function() destination;
+  /// A path; null: the default.
+  final Future<String?> Function()? folder;
 
-  /// Under the public folder or a picked one: `MyApp/Videos`. Blank: at
-  /// its root.
+  /// Under the folder: `MyApp/Videos`. Blank: at its root.
   final String subfolder;
 
-  /// Android's shared collection for [HaulDestination.public] without a
-  /// `publicRoot`.
+  /// Android's shared collection for the default.
   final SharedStorage sharedStorage;
 
   final HaulAndroid _android;
   final SharedStorageMover _moveToShared;
-  final Future<String?> Function()? _publicRoot;
+
+  /// The default off Android.
+  final Future<String?> Function() _defaultFolder;
   final TargetPlatform? _platform;
 
   bool get _onAndroid =>
@@ -157,46 +76,32 @@ class HaulOutputSink implements ReservingOutputSink {
     String extension,
     DownloadRecord record,
   ) async {
-    final where = await destination();
-    if (!_onAndroid) {
-      return _directorySink(
-        where,
-      ).publish(staged, _nested(name), extension, record);
+    if (await folder?.call() case final dir?) {
+      try {
+        return await DirectorySink(
+          () async => dir,
+        ).publish(staged, _nested(name), extension, record);
+      } on FileSystemException {
+        // Not writable: the default, below.
+      }
     }
-    switch (where) {
-      case AppDestination():
-        return const PrivateSink().publish(staged, name, extension, record);
-      case FolderDestination(:final folder):
-        try {
-          return await _android.saveToFolder(
-            folderUri: folder.uri,
-            file: staged,
-            relativeName: p.posix.joinAll([
-              ..._folders(name),
-              '${safeFileName(name.baseName)}.$extension',
-            ]),
-          );
-        } on PlatformException {
-          // No grant any more: public, as below.
-        } on MissingPluginException {
-          // No plugin (tests, another embedding): public, as below.
-        }
-        return _public(staged, name, extension, record);
-      case PublicDestination():
-        return _public(staged, name, extension, record);
-    }
+    return _toDefault(staged, name, extension, record);
   }
 
-  Future<String> _public(
+  Future<String> _toDefault(
     File staged,
     OutputName name,
     String extension,
     DownloadRecord record,
   ) async {
-    if (_publicRoot != null) {
-      return _directorySink(
-        const HaulDestination.public(),
-      ).publish(staged, _nested(name), extension, record);
+    if (!_onAndroid) {
+      try {
+        return await DirectorySink(
+          _defaultFolder,
+        ).publish(staged, _nested(name), extension, record);
+      } on FileSystemException {
+        return const PrivateSink().publish(staged, name, extension, record);
+      }
     }
     // MediaStore names the entry after the file: it is renamed to what the
     // user should see first, beside the staged one.
@@ -226,27 +131,28 @@ class HaulOutputSink implements ReservingOutputSink {
   /// [name] with [subfolder] in front of its folders.
   OutputName _nested(OutputName name) => name.copyWith(folders: _folders(name));
 
-  DirectorySink _directorySink(HaulDestination where) => DirectorySink(
-    () async => switch (where) {
-      AppDestination() => null,
-      FolderDestination(:final folder) => folder.uri,
-      PublicDestination() => await (_publicRoot ?? _defaultPublicRoot)(),
-    },
-  );
-
   @override
   Future<String?> reserve(
     OutputName name,
     String extension,
     DownloadRecord record,
   ) async {
-    final where = await destination();
-    // Neither SAF nor MediaStore says where a file will go before it is
-    // there.
-    if (_onAndroid && (_publicRoot == null || where is! PublicDestination)) {
+    final dir = await folder?.call();
+    // MediaStore does not say where a file will go before it is there.
+    if (dir == null && _onAndroid) return null;
+    try {
+      final root = dir ?? await _defaultFolder();
+      if (root == null) return null;
+      // Made now: a folder that cannot be written answers here, not when
+      // the file is moved to its reserved place.
+      await Directory(root).create(recursive: true);
+      return await DirectorySink(
+        () async => root,
+      ).reserve(_nested(name), extension, record);
+    } on FileSystemException {
+      // Not writable: publish decides where it goes instead.
       return null;
     }
-    return _directorySink(where).reserve(_nested(name), extension, record);
   }
 
   @override
@@ -289,7 +195,7 @@ class HaulOutputSink implements ReservingOutputSink {
   }
 
   /// The user's Downloads on desktop; the app's Documents on iOS.
-  static Future<String?> _defaultPublicRoot() async {
+  static Future<String?> _platformDefault() async {
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       return (await getApplicationDocumentsDirectory()).path;
     }

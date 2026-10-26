@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
@@ -23,11 +22,6 @@ const _name = OutputName(
   baseName: 'Loki S01E01',
   folders: ['Loki', 'Season 01'],
 );
-const _folder = HaulFolder(
-  uri: 'content://tree/primary%3AMovies',
-  name: 'Movies',
-);
-
 void main() {
   late Directory temp;
   late Directory work;
@@ -51,33 +45,43 @@ void main() {
     return file;
   }
 
-  /// [publicRoot]: the app's folder for public; by default given off
-  /// Android (in place of the user's Downloads) and not on it (MediaStore).
-  HaulOutputSink sink(
-    HaulDestination destination, {
+  /// [folder]: the app's path; null, the default (MediaStore on Android,
+  /// `Downloads` in the temp folder elsewhere).
+  HaulOutputSink sink({
+    String? folder,
     TargetPlatform platform = TargetPlatform.android,
-    bool? publicRoot,
   }) => HaulOutputSink(
-    destination: () async => destination,
+    folder: () async => folder,
     subfolder: 'App/Videos',
     android: android,
     platform: platform,
-    publicRoot: (publicRoot ?? platform != TargetPlatform.android)
-        ? () async => p.join(temp.path, 'Downloads')
-        : null,
+    defaultFolder: () async => p.join(temp.path, 'Downloads'),
     moveToShared: (file, storage, directory) async {
       moved.add((p.basename(file.path), storage, directory));
       return movedUri;
     },
   );
 
+  String under(String root) =>
+      p.join(root, 'App', 'Videos', 'Loki', 'Season 01', 'Loki S01E01.mkv');
+
+  /// A folder nothing can be written in: a file stands where it would go.
+  Future<String> unwritable() async {
+    final blocker = File(p.join(temp.path, 'blocked'));
+    await blocker.writeAsString('');
+    return p.join(blocker.path, 'inside');
+  }
+
   group('on Android', () {
     test(
-      'public: renamed for MediaStore and moved under its folders',
+      'by default: renamed for MediaStore and moved under its folders',
       () async {
-        final locator = await sink(
-          const HaulDestination.public(),
-        ).publish(await staged(), _name, 'mkv', _record);
+        final locator = await sink().publish(
+          await staged(),
+          _name,
+          'mkv',
+          _record,
+        );
 
         expect(locator, movedUri);
         expect(moved, [
@@ -91,62 +95,50 @@ void main() {
     );
 
     test(
-      'public refused: the staged name comes back, kept in the app',
+      'MediaStore refused: the staged name comes back, kept in the app',
       () async {
         movedUri = null;
         final file = await staged();
-        final locator = await sink(
-          const HaulDestination.public(),
-        ).publish(file, _name, 'mkv', _record);
+        final locator = await sink().publish(file, _name, 'mkv', _record);
 
         expect(locator, 'work:output.mkv');
         expect(file.existsSync(), isTrue);
       },
     );
 
-    test('app: stays private', () async {
+    test("the app's folder: a plain file there, not MediaStore", () async {
+      final folder = p.join(temp.path, 'Picked');
       final locator = await sink(
-        const HaulDestination.app(),
+        folder: folder,
       ).publish(await staged(), _name, 'mkv', _record);
 
-      expect(locator, 'work:output.mkv');
+      expect(locator, under(folder));
+      expect(await File(locator).readAsString(), 'movie');
       expect(moved, isEmpty);
     });
 
-    test('folder: copied through SAF under its folders', () async {
-      final file = await staged();
+    test('a folder that cannot be written: the default instead', () async {
       final locator = await sink(
-        const HaulDestination.folder(_folder),
-      ).publish(file, _name, 'mkv', _record);
-
-      expect(android.saved, [
-        (_folder.uri, 'App/Videos/Loki/Season 01/Loki S01E01.mkv'),
-      ]);
-      expect(locator, startsWith(_folder.uri));
-      expect(file.existsSync(), isFalse);
-    });
-
-    test('folder without a grant: public instead', () async {
-      android.revoked.add(_folder.uri);
-      final locator = await sink(
-        const HaulDestination.folder(_folder),
+        folder: await unwritable(),
       ).publish(await staged(), _name, 'mkv', _record);
 
       expect(locator, movedUri);
-      expect(android.saved, isEmpty);
     });
 
-    test('nothing is reserved: neither SAF nor MediaStore can say', () async {
-      expect(
-        await sink(
-          const HaulDestination.public(),
-        ).reserve(_name, 'mkv', _record),
-        isNull,
-      );
-    });
+    test(
+      'only a folder of the app is known before the file is there',
+      () async {
+        expect(await sink().reserve(_name, 'mkv', _record), isNull);
+        final folder = p.join(temp.path, 'Picked');
+        expect(
+          await sink(folder: folder).reserve(_name, 'mkv', _record),
+          startsWith(folder),
+        );
+      },
+    );
 
     test('remove and holds go through the plugin for content URIs', () async {
-      final s = sink(const HaulDestination.public());
+      final s = sink();
       android.existing.add('content://media/1');
       expect(await s.holds('content://media/1'), isTrue);
 
@@ -156,91 +148,25 @@ void main() {
     });
   });
 
-  group('on Android with a publicRoot', () {
-    String expected() => p.join(
-      temp.path,
-      'Downloads',
-      'App',
-      'Videos',
-      'Loki',
-      'Season 01',
-      'Loki S01E01.mkv',
-    );
-
-    test('public: a plain file there, not MediaStore', () async {
-      final locator = await sink(
-        const HaulDestination.public(),
-        publicRoot: true,
-      ).publish(await staged(), _name, 'mkv', _record);
-
-      expect(locator, expected());
-      expect(await File(locator).readAsString(), 'movie');
-      expect(moved, isEmpty);
-    });
-
-    test('a folder that can no longer be written falls back there', () async {
-      android.revoked.add(_folder.uri);
-      final locator = await sink(
-        const HaulDestination.folder(_folder),
-        publicRoot: true,
-      ).publish(await staged(), _name, 'mkv', _record);
-
-      expect(locator, expected());
-      expect(moved, isEmpty);
-    });
-
-    test('public is known before the file is there', () async {
-      expect(
-        await sink(
-          const HaulDestination.public(),
-          publicRoot: true,
-        ).reserve(_name, 'mkv', _record),
-        isNotNull,
-      );
-      expect(
-        await sink(
-          const HaulDestination.folder(_folder),
-          publicRoot: true,
-        ).reserve(_name, 'mkv', _record),
-        isNull,
-      );
-    });
-  });
-
   group('elsewhere', () {
     test(
-      'public: into Downloads under the subfolder and its folders',
+      'by default: into Downloads under the subfolder and its folders',
       () async {
         final locator = await sink(
-          const HaulDestination.public(),
           platform: TargetPlatform.macOS,
         ).publish(await staged(), _name, 'mkv', _record);
 
-        expect(
-          locator,
-          p.join(
-            temp.path,
-            'Downloads',
-            'App',
-            'Videos',
-            'Loki',
-            'Season 01',
-            'Loki S01E01.mkv',
-          ),
-        );
+        expect(locator, under(p.join(temp.path, 'Downloads')));
         expect(File(locator).existsSync(), isTrue);
         expect(moved, isEmpty);
       },
     );
 
-    test('folder: the picked path, reserved before the move', () async {
-      final picked = p.join(temp.path, 'Picked');
-      final s = sink(
-        HaulDestination.folder(HaulFolder(uri: picked, name: picked)),
-        platform: TargetPlatform.windows,
-      );
+    test("the app's folder, reserved before the move", () async {
+      final folder = p.join(temp.path, 'Picked');
+      final s = sink(folder: folder, platform: TargetPlatform.windows);
       final reserved = await s.reserve(_name, 'mkv', _record);
-      expect(reserved, startsWith(picked));
+      expect(reserved, startsWith(folder));
 
       final locator = await s.publishTo(await staged(), reserved!, _record);
       expect(locator, reserved);
@@ -250,30 +176,16 @@ void main() {
       expect(File(locator).existsSync(), isFalse);
     });
 
-    test('app: private, nothing reserved', () async {
+    test('a folder that cannot be written: the default instead', () async {
       final s = sink(
-        const HaulDestination.app(),
+        folder: await unwritable(),
         platform: TargetPlatform.linux,
       );
       expect(await s.reserve(_name, 'mkv', _record), isNull);
       expect(
         await s.publish(await staged(), _name, 'mkv', _record),
-        'work:output.mkv',
+        under(p.join(temp.path, 'Downloads')),
       );
     });
-  });
-
-  test('HaulDestination survives JSON', () {
-    for (final d in const [
-      HaulDestination.public(),
-      HaulDestination.app(),
-      HaulDestination.folder(_folder),
-    ]) {
-      final back = HaulDestination.fromJson(
-        jsonDecode(jsonEncode(d.toJson())) as Map<String, Object?>,
-      );
-      expect(back, d);
-    }
-    expect(HaulDestination.fromJson(const {}), const HaulDestination.public());
   });
 }

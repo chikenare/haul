@@ -4,8 +4,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:haul/haul.dart';
+import 'package:haul/src/widgets/download_widgets.dart';
+import 'package:haul/src/widgets/haul_controller.dart';
+import 'package:haul/src/widgets/haul_strings.dart';
+import 'package:haul/src/widgets/parent_widgets.dart';
 import 'package:haul/testing.dart';
-import 'package:haul/widgets.dart';
 
 /// Never answers: downloads stay reading their source.
 class _SilentFetcher extends SourceFetcher {
@@ -33,8 +36,6 @@ void main() {
   late Directory dir;
   late DownloadEngine engine;
   late FakeHaulAndroid android;
-  late HaulSettingsController settings;
-  late List<HaulSettings> stored;
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('haul_widgets_test');
@@ -49,8 +50,6 @@ void main() {
       images: null,
     );
     android = FakeHaulAndroid();
-    stored = [];
-    settings = HaulSettingsController(const HaulSettings(), stored.add);
   });
 
   tearDown(() async {
@@ -58,12 +57,8 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  HaulController haulWith({HaulStrings? strings}) => HaulController(
-    engine: engine,
-    settings: settings,
-    android: android,
-    strings: strings,
-  );
+  HaulController haulWith({HaulStrings? strings}) =>
+      HaulController(engine: engine, android: android, strings: strings);
 
   HaulController haul() => haulWith();
 
@@ -279,263 +274,6 @@ void main() {
       await tester.tap(find.text('Share Loki'));
       await tester.pumpAndSettle();
       expect(shared, isTrue);
-    });
-  });
-
-  testWidgets('HaulDownloadButton asks the app to enqueue a new key', (
-    tester,
-  ) async {
-    await tester.runAsync(engine.init);
-    var asked = 0;
-    await tester.pumpWidget(
-      app(
-        HaulDownloadButton(
-          controller: haul(),
-          downloadKey: 'film',
-          onDownload: () async => asked++,
-        ),
-      ),
-    );
-    await tester.tap(find.byType(HaulDownloadButton));
-    expect(asked, 1);
-  });
-
-  group('HaulParentDownloadButton', () {
-    testWidgets('asks the app while nothing of the season is there', (
-      tester,
-    ) async {
-      await tester.runAsync(engine.init);
-      var asked = 0;
-      await tester.pumpWidget(
-        app(
-          HaulParentDownloadButton(
-            controller: haul(),
-            parentId: 'loki',
-            where: (r) => r.metadata['season'] == 1,
-            onDownload: () async => asked++,
-          ),
-        ),
-      );
-      await tester.tap(find.byType(HaulParentDownloadButton));
-      expect(asked, 1);
-    });
-
-    testWidgets('pauses the season, then resumes it', (tester) async {
-      await enqueue(tester, [
-        _request('s1e1', parent: _loki, season: 1),
-        _request('s1e2', parent: _loki, season: 1),
-        _request('s2e1', parent: _loki, season: 2),
-      ]);
-      await tester.pumpWidget(
-        app(
-          HaulParentDownloadButton(
-            controller: haul(),
-            parentId: 'loki',
-            where: (r) => r.metadata['season'] == 1,
-            onDownload: () async {},
-          ),
-        ),
-      );
-      await tester.pump();
-
-      Future<void> tapAndSettle() async {
-        await tester.tap(find.byType(HaulParentDownloadButton));
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-        await tester.pump();
-      }
-
-      await tapAndSettle();
-      final statuses = {for (final r in engine.records) r.key: r.status};
-      expect(statuses['s1e1'], DownloadStatus.paused);
-      expect(statuses['s1e2'], DownloadStatus.paused);
-      expect(statuses['s2e1'], isNot(DownloadStatus.paused));
-      expect(
-        find.byTooltip(RegExp(const HaulStrings().resumeAll)),
-        findsOneWidget,
-      );
-
-      await tapAndSettle();
-      expect(engine.byKey('s1e1')!.status, isNot(DownloadStatus.paused));
-    });
-  });
-
-  group('HaulFormatTile', () {
-    testWidgets('switches straight away by default', (tester) async {
-      await tester.pumpWidget(app(HaulFormatTile(controller: haul())));
-      await tester.tap(find.byType(Switch));
-      await tester.pumpAndSettle();
-      expect(settings.value.merge, isTrue);
-    });
-
-    testWidgets('with confirm, asks before turning one file on', (
-      tester,
-    ) async {
-      android.free = 2000000000;
-      await tester.pumpWidget(
-        app(HaulFormatTile(controller: haul(), confirm: true)),
-      );
-      await tester.tap(find.byType(Switch));
-      await tester.pumpAndSettle();
-
-      expect(find.text(const HaulStrings().freeSpace('2.0 GB')), findsOne);
-      await tester.tap(find.text(const HaulStrings().cancel));
-      await tester.pumpAndSettle();
-      expect(settings.value.merge, isFalse);
-
-      await tester.tap(find.byType(Switch));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(const HaulStrings().formatFileConfirmAction));
-      await tester.pumpAndSettle();
-      expect(settings.value.merge, isTrue);
-
-      // Turning it off asks nothing.
-      await tester.tap(find.byType(Switch));
-      await tester.pumpAndSettle();
-      expect(settings.value.merge, isFalse);
-    });
-  });
-
-  group('ensureHaulSetup', () {
-    Future<void> tapText(WidgetTester tester, String text) async {
-      final finder = find.text(text);
-      await tester.ensureVisible(finder);
-      await tester.pumpAndSettle();
-      await tester.tap(finder);
-      await tester.pumpAndSettle();
-    }
-
-    Future<bool?> open(WidgetTester tester) async {
-      bool? result;
-      await tester.pumpWidget(
-        app(
-          Builder(
-            builder: (context) => TextButton(
-              onPressed: () async =>
-                  result = await ensureHaulSetup(context, haul()),
-              child: const Text('go'),
-            ),
-          ),
-        ),
-      );
-      await tapText(tester, 'go');
-      return result;
-    }
-
-    testWidgets('once accepted it answers true without asking', (tester) async {
-      settings.value = const HaulSettings(setupDone: true);
-      await tester.pumpWidget(app(const SizedBox()));
-      final context = tester.element(find.byType(SizedBox));
-      expect(await ensureHaulSetup(context, haul()), isTrue);
-      expect(find.byType(HaulSetupSheet), findsNothing);
-    });
-
-    testWidgets('accepting keeps the choices and marks it done', (
-      tester,
-    ) async {
-      await open(tester);
-      expect(find.byType(HaulSetupSheet), findsOneWidget);
-
-      await tapText(tester, const HaulStrings().formatFile);
-      await tapText(tester, const HaulStrings().download);
-
-      expect(settings.value.merge, isTrue);
-      expect(settings.value.setupDone, isTrue);
-      expect(stored.last, settings.value);
-    });
-
-    testWidgets('accepting keeps what the sheet did not show', (tester) async {
-      await open(tester);
-      settings.update((s) => s.copyWith(wifiOnly: true));
-      await tapText(tester, const HaulStrings().download);
-      expect(settings.value.wifiOnly, isTrue);
-      expect(settings.value.setupDone, isTrue);
-    });
-
-    testWidgets('backing out changes nothing', (tester) async {
-      await open(tester);
-      await tapText(tester, const HaulStrings().formatFile);
-      await tapText(tester, const HaulStrings().cancel);
-
-      expect(settings.value, const HaulSettings());
-      expect(stored, isEmpty);
-    });
-
-    testWidgets('where files go is not asked', (tester) async {
-      await open(tester);
-      await tapText(tester, const HaulStrings().formatFile);
-      expect(find.text(const HaulStrings().destination), findsNothing);
-    });
-
-    testWidgets('the battery row asks the system', (tester) async {
-      await open(tester);
-      await tapText(tester, const HaulStrings().batteryAction);
-      expect(android.batteryRequests, 1);
-    });
-  });
-
-  testWidgets('HaulBatteryTile is hidden once allowed, and off Android', (
-    tester,
-  ) async {
-    android.batteryFree = true;
-    await tester.pumpWidget(app(HaulBatteryTile(controller: haul())));
-    await tester.pump();
-    expect(find.text(const HaulStrings().batteryAction), findsNothing);
-    expect(find.text(const HaulStrings().batteryDone), findsOneWidget);
-
-    android = FakeHaulAndroid(isAndroid: false);
-    await tester.pumpWidget(app(HaulBatteryTile(controller: haul())));
-    expect(find.byType(ListTile), findsNothing);
-  });
-
-  group('HaulDestinationTile', () {
-    const picked = HaulFolder(uri: 'content://tree/x', name: 'Movies');
-
-    testWidgets('says the default folder until another is picked', (
-      tester,
-    ) async {
-      await tester.pumpWidget(app(HaulDestinationTile(controller: haul())));
-      expect(find.text(const HaulStrings().destinationDefault), findsOneWidget);
-      expect(find.byType(IconButton), findsNothing);
-    });
-
-    testWidgets('a tap goes straight to the picker', (tester) async {
-      android.picked = picked;
-      await tester.pumpWidget(app(HaulDestinationTile(controller: haul())));
-      await tester.tap(find.byType(ListTile));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(settings.value.destination, const HaulDestination.folder(picked));
-      expect(find.text('Movies'), findsOneWidget);
-    });
-
-    testWidgets('backing out of the picker keeps what was', (tester) async {
-      android.picked = null;
-      await tester.pumpWidget(app(HaulDestinationTile(controller: haul())));
-      await tester.tap(find.byType(ListTile));
-      await tester.pumpAndSettle();
-
-      expect(settings.value.destination, const HaulDestination.public());
-      expect(stored, isEmpty);
-    });
-
-    testWidgets('a picked folder can go back to the default', (tester) async {
-      settings.value = const HaulSettings(
-        destination: HaulDestination.folder(picked),
-      );
-      await tester.pumpWidget(app(HaulDestinationTile(controller: haul())));
-      await tester.tap(find.byTooltip(const HaulStrings().useDefaultFolder));
-      await tester.pumpAndSettle();
-
-      expect(settings.value.destination, const HaulDestination.public());
-    });
-
-    testWidgets('nothing where no folder can be picked', (tester) async {
-      android = FakeHaulAndroid(isAndroid: false);
-      await tester.pumpWidget(app(HaulDestinationTile(controller: haul())));
-      expect(find.byType(ListTile), findsNothing);
     });
   });
 }

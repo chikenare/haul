@@ -32,8 +32,6 @@ class HaulStrings {
   /// A finished package, which only the app plays.
   String get inApp => 'In the app';
 
-  // Actions
-  String get download => 'Download';
   String get pause => 'Pause';
   String get resume => 'Resume';
   String get retry => 'Retry';
@@ -91,39 +89,6 @@ class HaulStrings {
     };
   }
 
-  // Settings and the first-download sheet
-  String get setupTitle => 'Before your first download';
-  String get setupIntro => 'You can change all of this later in the settings.';
-  String get format => 'Format';
-  String get formatApp => 'To watch in the app';
-  String get formatAppHint => 'Ready sooner. Only this app plays it.';
-  String get formatFile => 'One file (MKV)';
-  String get formatFileHint =>
-      'Takes a few more seconds at the end. Opens in other players.';
-
-  /// Before turning [formatFile] on (`HaulFormatTile(confirm: true)`).
-  String get formatFileConfirmTitle => 'Save as one file?';
-  String get formatFileConfirm =>
-      'The file is put together at the end of each download: keep the app '
-      'open while it is, and leave room for twice its size.';
-  String get formatFileConfirmAction => 'Turn on';
-  String freeSpace(String bytes) => 'Free: $bytes';
-  String get destination => 'Where files go';
-
-  /// Where files go until the user picks a folder: no permission needed.
-  String get destinationDefault => 'Default folder';
-  String get destinationApp => 'Only in the app';
-  String get destinationFolderLost =>
-      'That folder can no longer be written to. Pick it again.';
-  String get useDefaultFolder => 'Use the default folder';
-  String get wifiOnly => 'Only on Wi-Fi';
-  String get wifiOnlyHint => 'Nothing is downloaded on mobile data.';
-  String get battery => 'Download in the background';
-  String get batteryHint =>
-      'The battery saver may stop downloads while the app is closed.';
-  String get batteryAction => 'Allow';
-  String get batteryDone => 'Allowed';
-
   /// `1.2 GB`.
   String bytes(int bytes) {
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -156,8 +121,6 @@ class HaulStringsEs extends HaulStrings {
   @override
   String get inApp => 'En la app';
 
-  @override
-  String get download => 'Descargar';
   @override
   String get pause => 'Pausar';
   @override
@@ -227,54 +190,4 @@ class HaulStringsEs extends HaulStrings {
       _ => 'Algo salió mal.',
     };
   }
-
-  @override
-  String get setupTitle => 'Antes de tu primera descarga';
-  @override
-  String get setupIntro => 'Puedes cambiar todo esto después en los ajustes.';
-  @override
-  String get format => 'Formato';
-  @override
-  String get formatApp => 'Para ver en la app';
-  @override
-  String get formatAppHint => 'Está lista antes. Solo esta app la reproduce.';
-  @override
-  String get formatFile => 'Un archivo (MKV)';
-  @override
-  String get formatFileHint =>
-      'Tarda unos segundos más al terminar. Se abre con otros reproductores.';
-  @override
-  String get formatFileConfirmTitle => '¿Guardar como un archivo?';
-  @override
-  String get formatFileConfirm =>
-      'El archivo se arma al final de cada descarga: deja la app abierta '
-      'mientras tanto y deja espacio para el doble de su tamaño.';
-  @override
-  String get formatFileConfirmAction => 'Activar';
-  @override
-  String freeSpace(String bytes) => 'Libre: $bytes';
-  @override
-  String get destination => 'Dónde se guardan';
-  @override
-  String get destinationDefault => 'Carpeta por defecto';
-  @override
-  String get destinationApp => 'Solo en la app';
-  @override
-  String get destinationFolderLost =>
-      'Ya no se puede escribir en esa carpeta. Elígela de nuevo.';
-  @override
-  String get useDefaultFolder => 'Usar la carpeta por defecto';
-  @override
-  String get wifiOnly => 'Solo con Wi-Fi';
-  @override
-  String get wifiOnlyHint => 'No se descarga nada con datos móviles.';
-  @override
-  String get battery => 'Descargar en segundo plano';
-  @override
-  String get batteryHint =>
-      'El ahorro de batería puede frenar las descargas con la app cerrada.';
-  @override
-  String get batteryAction => 'Permitir';
-  @override
-  String get batteryDone => 'Permitido';
 }

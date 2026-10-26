@@ -1,7 +1,9 @@
 # haul
 
-Offline downloads of HLS, DASH and plain-file video for Flutter apps, from
-the engine to the widgets. Layers in one package, each usable on its own:
+Offline downloads of HLS, DASH and plain-file video for Flutter apps. Like
+background_downloader, it does the work and takes values; screens,
+settings and permissions are the app's. Layers in one package, each usable
+on its own:
 
 - **Planner** (`package:haul/planner.dart`, pure Dart) — reads a
   source, tells HLS, DASH and plain files apart by content (never the URL),
@@ -14,12 +16,13 @@ the engine to the widgets. Layers in one package, each usable on its own:
   every piece fetched through `background_downloader`, progress,
   pause/resume/retry, fresh links when one runs out, and the finished package
   or file handed to wherever the app keeps it. A download can belong to a
-  parent (a show) and be listed inside it. It brings its own ffmpeg (ffmpeg-kit, minimal build)
-  and its own Android side: folders picked with SAF, the public Downloads
-  through MediaStore, and the battery saver.
-- **Widgets** (`package:haul/widgets.dart`) — rows, buttons, a list with parents,
-  the first-download sheet and settings rows, following the app's theme and
-  replaceable piece by piece (see [Widgets](#widgets)).
+  parent (a show) and be listed inside it. It brings its own ffmpeg
+  (ffmpeg-kit, minimal build) and a small Android side for files behind
+  `content://` URIs (the public Downloads through MediaStore).
+- **List** (`package:haul/widgets.dart`, optional) — the downloads list,
+  parents as one row that opens into their children, each row with its
+  progress and menu (see [The list](#the-list)). An app wanting another look
+  draws its own off the engine.
 
 ## What each app plugs in
 
@@ -29,7 +32,7 @@ Nothing here knows about an app's API or account. The engine takes:
 | --- | --- |
 | `SourceRefresher` | A fresh link (`RefreshedSource`) for a record whose link is about to expire (`expiresAt` within `EngineConfig.linkMargin`) or was refused. Throw `RefreshException(code, message)` to fail the download with the app's own code. |
 | `CriteriaProvider` | The `TrackCriteria` of a `TrackChoice.policy()` download, read when its turn comes — a queued season follows the settings of that moment. |
-| `OutputSink` | Where a finished file goes. `HaulOutputSink` follows a `HaulDestination` the user picks — the default folder — the public Downloads (MediaStore on Android), or the folder the app gives as `publicRoot` — or a folder of theirs (SAF on Android, picked from `HaulDestinationTile`) — read at each publish, and falls back to public and then private when a folder can no longer be written. `PrivateSink` (default) keeps it in the download's folder; `DirectorySink` moves it into a folder by path, never over another file (`Name (2).ext`). Packages always stay private. |
+| `OutputSink` | Where a finished file goes. `HaulOutputSink(folder:)` takes the folder the user picked in the app, as a path, read at each publish; while it answers null, the platform's default, written with no permission — the public Downloads through MediaStore on Android, the user's Downloads on desktop, the app's Documents on iOS. A folder that cannot be written falls back to the default, and that to private. `PrivateSink` (default) keeps it in the download's folder; `DirectorySink` moves it into a folder by path, never over another file (`Name (2).ext`). Packages always stay private. |
 | `FfmpegRunner` | Runs `MkvArgs`. `FfmpegKitRunner` (`package:haul/ffmpeg.dart`) by default; pass another for another build. |
 | `EngineHooks` | `onWholeFileTask`: dress the task of a file fetched in one request (a notification, which on Android keeps a long one in the foreground). |
 | `wifiOnly` | A `ValueListenable<bool>`: the user's "only on Wi-Fi", followed while it changes. Null: never. |
@@ -131,13 +134,10 @@ or ffmpeg.
 
 ### Android
 
-haul is a plugin with an Android side (`HaulAndroid`, channel
-`haul/android`): picked folders through SAF (`pickFolder`, `saveToFolder`,
-with subfolders), checking and deleting `content://` files, the path behind
-a URI, free space, and the battery saver. `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
-is not declared by the plugin — Google Play restricts it. An app that ships
-outside Play adds it to its manifest and gets the system's yes/no dialog;
-without it, asking opens the battery settings list.
+haul is a plugin with a small Android side (`HaulAndroid`, channel
+`haul/android`): checking and deleting files behind `content://` URIs, the
+path behind one, and the free space. Picking a folder (file_picker's
+`getDirectoryPath`, for instance) and the battery saver are the app's.
 
 ### Known limits
 
@@ -213,77 +213,60 @@ await notifications.follow(engine);
 // At the first download: notifications unless allowed already, and the
 // shared folders up to Android 9.
 await HaulPermissions.forDownload();
+
+// Where files go: the folder the user picked in the app, or the default.
+final sink = HaulOutputSink(
+  folder: () async => mySettings.videoFolder, // null: the default
+  subfolder: 'MyApp/Videos',
+);
 ```
 
 To let the user pick the tracks first, resolve and plan with the planner and
 hand both over: `DownloadRequest(…, tracks: TrackChoice.selection(selection),
 plan: plan)`.
 
-## Widgets
+## The list
 
 ```dart
 import 'package:haul/widgets.dart';
-
-// In shared_preferences — or anywhere: HaulSettingsController(value, onChanged).
-const store = HaulSettingsStore();
-final settings = store.controller();
-await store.loadInto(settings);
-final engine = DownloadEngine(
-  sink: HaulOutputSink(
-    destination: () async => settings.value.destination,
-    subfolder: 'MyApp/Videos',
-  ),
-  wifiOnly: settings.wifiOnly,
-  …
-);
 
 // One, at start, kept however the app keeps its state (a Riverpod
 // provider, a service locator…).
 final haul = HaulController(
   engine: engine,
-  settings: settings,
   strings: const MyStrings(), // optional; en/es built in
   canRetry: (e) => e.code != 'quota', // the app's codes a retry won't fix
-  pickDirectory: myDesktopPicker, // desktop only; Android uses SAF
 );
 
-// Handed to each widget where it shows.
-HaulDownloadList(controller: haul, onPlay: play);
-HaulDestinationTile(controller: haul);
+HaulDownloadList(
+  controller: haul,
+  onPlay: play,
+  onOpenParent: (entry) => open(ParentScreen(entry.parent)),
+);
+
+// The screen of a parent: its children, headings and order from what the
+// app keeps in each (`metadata`).
+HaulParentView(
+  controller: haul,
+  parentId: parent.id,
+  sectionOf: (r) => 'Season ${r.metadata['season']}',
+);
+HaulParentActions(controller: haul, parent: parent); // for its app bar
 ```
 
-- **Default widgets**: `HaulDownloadList` (parents as one row,
-  `onOpenParent`), `HaulParentView` for a parent's children — headings and
-  order are the app's, from each child's `metadata`: `sectionOf: (r) =>
-  'Season ${r.metadata['season']}'`, `sort:` — and `HaulParentActions`;
-  `HaulParentDownloadButton(parentId, where:, onDownload:)` for a show or a
-  season (download what is missing, pause all, resume all) with
-  `HaulParentProgressIcon` / `HaulParentProgressBuilder`;
-  `HaulDownloadTile`, `HaulDownloadButton(downloadKey, onDownload)`,
-  `HaulProgressIcon`, `HaulActionsMenu`, `HaulThumbnail`;
-  `ensureHaulSetup(context, haul)` before the first download; `HaulFormatTile`
-  (`confirm: true` asks before one file), `HaulDestinationTile` (a tap
-  opens the folder picker),
-  `HaulWifiOnlyTile`, `HaulBatteryTile` for a settings page.
 - **The app's own actions**: `menuItems: (context, record) => [HaulMenuItem(
-  icon:, label:, onSelected:)]` on `HaulDownloadTile`, `HaulDownloadList`
-  and `HaulParentView` (and `HaulParentActions` for a parent) — after
-  haul's actions, before the ones that remove.
-- **Replacing parts**: every row takes builders (`itemBuilder`,
-  `parentBuilder`, `sectionBuilder`, `leading`, `title`, `subtitle`,
-  `trailing`, `builder` on the buttons).
+  icon:, label:, onSelected:)]` on `HaulDownloadList` and `HaulParentView`
+  (and `HaulParentActions` for a parent) — after haul's actions, before the
+  ones that remove.
+- **Replacing rows**: `itemBuilder`, `parentBuilder`, `sectionBuilder`.
 - **Texts**: extend `HaulStrings` (or `HaulStringsEs`) and override what
   differs — `error(DownloadError)` for the app's own codes,
   `sourceError(e)` for why a source could not be read.
 - **Look**: `ThemeData.extensions: [HaulTheme(...)]`; colours and text come
   from the app's `ColorScheme` and `TextTheme` otherwise.
-- **Drawing one's own**: `HaulRecordBuilder` / `HaulKeyBuilder` /
-  `HaulRecordsBuilder` / `HaulChildrenBuilder` follow records; `DownloadActions.of(record)` says what
-  can be done and `runHaulAction` does it; `downloadSummary` writes the state
-  line; `engine.playable(record)` is what a player opens.
 
 `example/` is an app with public test streams (HLS, DASH, a ranged MP4, a
-"show" as a parent with two seasons) that uses all of it.
+"show" as a parent with two seasons) that uses it.
 
 ### The planner alone
 

@@ -1,5 +1,4 @@
 import 'package:background_downloader/background_downloader.dart';
-import 'package:haul/src/android/haul_android.dart';
 
 /// What downloads ask the user for. Asked at the first download rather
 /// than at app start: Android lets an app ask twice, and without a reason
@@ -47,15 +46,5 @@ abstract final class HaulPermissions {
     } on Object {
       return false;
     }
-  }
-
-  /// The system's dialog, or the app's notification settings once Android
-  /// no longer shows it. Read [notificationsAllowed] again when the app
-  /// comes back.
-  static Future<void> enableNotifications({
-    HaulAndroid android = HaulAndroid.i,
-  }) async {
-    if (await requestNotifications()) return;
-    await android.openNotificationSettings();
   }
 }

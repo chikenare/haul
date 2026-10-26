@@ -10,29 +10,36 @@ import 'package:haul_example/player_screen.dart';
 /// haul's widgets.
 late final HaulController haul;
 
+/// The example's settings, kept in memory: haul only takes their values.
+/// An app keeps them wherever it keeps its preferences, with its own rows
+/// to change them.
+final merge = ValueNotifier(false);
+final wifiOnly = ValueNotifier(false);
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // In shared_preferences; an app may keep them anywhere else through
-  // `HaulSettingsController(value, onChanged)`.
-  const store = HaulSettingsStore();
-  final settings = store.controller();
-  await store.loadInto(settings);
-
   final engine = DownloadEngine(
-    sink: HaulOutputSink(
-      destination: () async => settings.value.destination,
-      subfolder: 'Haul Example',
-    ),
-    wifiOnly: settings.wifiOnly,
+    // No `folder`: the platform's default, written with no permission. An
+    // app passes the one the user picked (`folder: () async => path`).
+    sink: HaulOutputSink(subfolder: 'Haul Example'),
+    wifiOnly: wifiOnly,
     // Small: the example is for trying things, not for filling the phone.
     criteria: (_) async => const TrackCriteria(maxHeight: 480),
   );
   await engine.init();
-  haul = HaulController(engine: engine, settings: settings);
+  haul = HaulController(engine: engine);
 
   runApp(const ExampleApp());
 }
+
+/// What a download asked for now becomes: one file, or the package.
+OutputMode output(BuildContext context) => merge.value
+    ? OutputMode(
+        kind: OutputKind.file,
+        subtitleSidecars: Theme.of(context).platform == TargetPlatform.android,
+      )
+    : OutputMode.package;
 
 class ExampleApp extends StatelessWidget {
   const ExampleApp({super.key});
@@ -53,8 +60,6 @@ class ExampleApp extends StatelessWidget {
     );
   }
 }
-
-HaulSettingsController get settings => haul.requireSettings;
 
 /// The season of an episode, from what the example keeps in `metadata`.
 int? seasonOf(DownloadRecord record) => record.metadata['season'] as int?;
@@ -148,32 +153,18 @@ class _CatalogRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: HaulThumbnail(
-        imageUrl: item.imageUrl ?? item.parent?.imageUrl,
-        size: const Size(72, 40),
-      ),
       title: Text(item.listTitle),
       subtitle: Text(item.kind),
-      trailing: HaulDownloadButton(
-        controller: haul,
-        downloadKey: item.key,
-        onPlay: (record) => openPlayer(context, record),
-        onDownload: () async {
-          final android = Theme.of(context).platform == TargetPlatform.android;
-          // The first time, the user picks format and folder.
-          if (!await ensureHaulSetup(context, haul, showWifiOnly: true)) {
-            return;
-          }
-          await haul.engine.enqueue(
-            item.request(settings.value.output(subtitleSidecars: android)),
-          );
-        },
+      // Its progress is on the Downloads tab, haul's list.
+      trailing: IconButton(
+        icon: const Icon(Icons.download),
+        onPressed: () => haul.engine.enqueue(item.request(output(context))),
       ),
     );
   }
 }
 
-/// A whole season at once: the parent's button for some of its children.
+/// A whole season at once: what is there already is left as it is.
 class _SeasonRow extends StatelessWidget {
   const _SeasonRow({required this.season});
 
@@ -182,31 +173,13 @@ class _SeasonRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = episodes.where((e) => e.season == season).toList();
-    bool inSeason(DownloadRecord r) => seasonOf(r) == season;
     return ListTile(
       title: Text('Season $season'),
-      subtitle: HaulParentProgressBuilder(
-        controller: haul,
-        parentId: clips.id,
-        where: inSeason,
-        builder: (context, progress) =>
-            Text(haul.stringsOf(context).doneOf(progress.done, items.length)),
-      ),
-      trailing: HaulParentDownloadButton(
-        controller: haul,
-        parentId: clips.id,
-        where: inSeason,
-        onDownload: () async {
-          final android = Theme.of(context).platform == TargetPlatform.android;
-          if (!await ensureHaulSetup(context, haul, showWifiOnly: true)) {
-            return;
-          }
-          // What is there already is left as it is.
-          await haul.engine.enqueueAll([
-            for (final item in items)
-              item.request(settings.value.output(subtitleSidecars: android)),
-          ]);
-        },
+      trailing: IconButton(
+        icon: const Icon(Icons.download_for_offline),
+        onPressed: () => haul.engine.enqueueAll([
+          for (final item in items) item.request(output(context)),
+        ]),
       ),
     );
   }
@@ -239,21 +212,25 @@ class ParentScreen extends StatelessWidget {
   }
 }
 
+/// The example's own rows: haul has no settings screen.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    Widget toggle(String title, ValueNotifier<bool> value) =>
+        ValueListenableBuilder(
+          valueListenable: value,
+          builder: (context, on, _) => SwitchListTile(
+            title: Text(title),
+            value: on,
+            onChanged: (v) => value.value = v,
+          ),
+        );
     return ListView(
       children: [
-        HaulFormatTile(controller: haul),
-        HaulDestinationTile(controller: haul),
-        HaulWifiOnlyTile(controller: haul),
-        HaulBatteryTile(controller: haul),
-        ListTile(
-          title: const Text('Show the first-download sheet again'),
-          onTap: () => settings.update((s) => s.copyWith(setupDone: false)),
-        ),
+        toggle('Save as one file', merge),
+        toggle('Only on Wi-Fi', wifiOnly),
       ],
     );
   }

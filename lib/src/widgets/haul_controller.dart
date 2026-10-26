@@ -2,39 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:haul/src/android/haul_android.dart';
 import 'package:haul/src/engine/download_engine.dart';
 import 'package:haul/src/engine/model.dart';
-import 'package:haul/src/widgets/haul_settings.dart';
 import 'package:haul/src/widgets/haul_strings.dart';
 
-/// Picks a folder on desktop (the app's own file picker); null when the
-/// user backs out.
-typedef DirectoryPicker = Future<String?> Function();
-
-/// What haul's widgets work with: the engine, the user's settings, and how
-/// the app wants things said and done. The app makes one — at start, next
+/// What haul's download list works with: the engine, and how the app
+/// wants things said and done. The app makes one — at start, next
 /// to its engine — keeps it however it keeps its state (Riverpod, a
 /// singleton…) and hands it to each widget as `controller:`.
 class HaulController {
   HaulController({
     required this.engine,
-    this.settings,
     this.strings,
     this.android = HaulAndroid.i,
-    this.pickDirectory,
     this.canRetry,
   });
 
   final DownloadEngine engine;
 
-  /// Needed by the setup sheet and the settings tiles.
-  final HaulSettingsController? settings;
-
   /// Null: [HaulStrings.forLocale] of the app's locale.
   final HaulStrings? strings;
   final HaulAndroid android;
-
-  /// Offers "a folder of my choice" on desktop, where haul brings no
-  /// picker of its own. Android uses the system's.
-  final DirectoryPicker? pickDirectory;
 
   /// Whether a failed download is worth retrying; by default every one
   /// is. An app answers false for its own codes a retry would not change
@@ -47,12 +33,6 @@ class HaulController {
       HaulStrings.forLocale(
         Localizations.maybeLocaleOf(context) ?? const Locale('en'),
       );
-
-  /// [settings], for the widgets that cannot do without them.
-  HaulSettingsController get requireSettings {
-    assert(settings != null, 'HaulController.settings is needed here');
-    return settings!;
-  }
 }
 
 /// How haul's widgets look, on top of the app's `ThemeData` — colours and
