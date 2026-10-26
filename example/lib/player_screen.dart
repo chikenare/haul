@@ -6,12 +6,13 @@ import 'package:haul/widgets.dart';
 import 'package:video_player/video_player.dart';
 
 /// Opens a finished download: its path, or its `content://` URI.
-void openPlayer(BuildContext context, DownloadRecord record) {
-  final locator = playableLocator(HaulScope.of(context).engine, record);
-  if (locator == null) return;
-  Navigator.of(context).push(
+Future<void> openPlayer(BuildContext context, DownloadRecord record) async {
+  final playable = await HaulScope.of(context).engine.playable(record);
+  if (playable == null || !context.mounted) return;
+  await Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => PlayerScreen(title: record.title, locator: locator),
+      builder: (_) =>
+          PlayerScreen(title: record.title, locator: playable.locator),
     ),
   );
 }

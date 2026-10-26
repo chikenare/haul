@@ -92,6 +92,14 @@ abstract interface class ThumbnailGrabber {
   Future<bool> grab(MuxInput video, String outputPath);
 }
 
+/// Keeps a copy of a download's remote picture (`DownloadRequest.imageUrl`)
+/// so it shows offline. `HttpImageFetcher` by default.
+abstract interface class ImageFetcher {
+  /// Writes what [url] serves to [file]; answers whether it could. Never
+  /// throws: a picture never fails a download.
+  Future<bool> fetch(String url, File file);
+}
+
 /// Runs ffmpeg with [args] (see `MkvArgs`). The engine does not depend on
 /// an ffmpeg build: each app brings its own.
 abstract interface class FfmpegRunner {

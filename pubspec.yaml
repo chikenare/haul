@@ -14,15 +14,18 @@ environment:
 dependencies:
   background_downloader: ^9.6.4
   collection: ^1.19.0
+  connectivity_plus: ^7.3.1
   ffmpeg_kit_flutter_new_min: ^3.6.7
   flutter:
     sdk: flutter
+  flutter_local_notifications: ^22.3.2
   freezed_annotation: ^3.1.0
   json_annotation: ^4.9.0
   meta: ^1.16.0
   mime: ^2.0.0
   path: ^1.9.0
   path_provider: ^2.1.5
+  shared_preferences: ^2.5.5
   xml: ^7.0.0
 
 dev_dependencies:

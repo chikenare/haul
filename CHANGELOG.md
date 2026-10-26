@@ -19,6 +19,27 @@
   (`ThumbnailGrabber`, `engine.imageOf`).
 - ffmpeg is exported from `package:haul/ffmpeg.dart`, not `haul.dart`.
 - `example/` app, with an integration test that downloads for real.
+- Pictures: a remote `imageUrl` is kept in the download's folder and shown
+  from there offline (`ImageFetcher`, `HttpImageFetcher`; `images: null`
+  turns it off); a new picture replaces the copy.
+- Space: a download that will not fit fails as `noSpace` before fetching,
+  and so does an export (`freeSpace`, `HaulAndroid.freeBytes` by default).
+- `engine.playable(record, needsPath:)` → `PlayableDownload` (locator and
+  subtitles; null once the file is gone). Replaces `playableLocator`.
+- Menus: `HaulMenuItem` and `menuItems` on `HaulActionsMenu`,
+  `HaulDownloadTile`, `HaulDownloadList`, `HaulParentView` and
+  `HaulParentActions`. Exporting from the menu says how it went.
+- `HaulFormatTile(confirm:)` and `confirmHaulFormatFile`.
+- `HaulStrings.sourceError`, `exported`, `freeSpace` and the format
+  confirmation texts.
+- `HaulNotifications` (flutter_local_notifications): progress of downloads
+  in pieces, failures, and `hooks` for whole files' tasks;
+  `HaulNotificationTexts.forLocale`.
+- `ConnectivityWifiMonitor` (connectivity_plus), the default with
+  `wifiOnly`.
+- `HaulPermissions` (notifications, shared storage up to Android 9) and
+  `HaulAndroid.openNotificationSettings`.
+- `HaulSettingsStore` (shared_preferences), optional.
 
 ## 0.1.0
 

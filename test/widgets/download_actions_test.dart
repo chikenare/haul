@@ -25,6 +25,34 @@ DownloadRecord _record(
 );
 
 void main() {
+  test('sourceError: each code of the planner, the rest generic', () {
+    const en = HaulStrings();
+    const es = HaulStringsEs();
+    expect(
+      en.sourceError(const SourceException(SourceErrorCode.drm)),
+      contains('protected'),
+    );
+    expect(
+      es.sourceError(SourceException(SourceErrorCode.http(404))),
+      contains('404'),
+    );
+    for (final code in [
+      SourceErrorCode.drm,
+      SourceErrorCode.live,
+      SourceErrorCode.empty,
+      SourceErrorCode.unsupported,
+      SourceErrorCode.network,
+      SourceErrorCode.missingPieces,
+    ]) {
+      expect(
+        es.sourceError(SourceException(code)),
+        isNot(es.sourceError(StateError('x'))),
+        reason: code,
+      );
+    }
+    expect(en.sourceError(StateError('x')), 'Something went wrong.');
+  });
+
   group('DownloadActions', () {
     test('the primary action follows the status', () {
       HaulAction? primary(DownloadStatus s) =>

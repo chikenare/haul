@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -298,39 +299,116 @@ Future<bool> confirmHaulDelete(BuildContext context, String title) async {
   return yes ?? false;
 }
 
+/// An entry of the app's own in one of haul's menus — send to a TV,
+/// share — shown after haul's actions and before the ones that remove.
+@immutable
+class HaulMenuItem {
+  const HaulMenuItem({
+    required this.icon,
+    required this.label,
+    required this.onSelected,
+  });
+
+  final IconData icon;
+  final String label;
+
+  /// With the menu's button's context, still mounted once the menu closed.
+  final FutureOr<void> Function(BuildContext context) onSelected;
+}
+
+/// The app's entries for one menu of [T] (a record, a parent), read each
+/// time it opens: an entry may depend on its state.
+typedef HaulMenuItems<T> =
+    List<HaulMenuItem> Function(BuildContext context, T subject);
+
+/// [items] as a popup menu's rows: haul's [leading], the app's [extra], then
+/// haul's [trailing] — removing comes last.
+List<PopupMenuEntry<Object>> _menuRows({
+  required List<(Object, IconData, String)> leading,
+  required List<HaulMenuItem> extra,
+  required List<(Object, IconData, String)> trailing,
+}) {
+  PopupMenuItem<Object> row(Object value, IconData icon, String label) =>
+      PopupMenuItem<Object>(
+        value: value,
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(icon),
+          title: Text(label),
+        ),
+      );
+  return [
+    for (final (value, icon, label) in leading) row(value, icon, label),
+    for (final item in extra) row(item, item.icon, item.label),
+    for (final (value, icon, label) in trailing) row(value, icon, label),
+  ];
+}
+
 /// The menu of a download's row: every action [DownloadActions.menu]
-/// allows. Delete asks first.
+/// allows, with the app's [menuItems] before the ones that remove. Delete
+/// asks first.
 class HaulActionsMenu extends StatelessWidget {
-  const HaulActionsMenu({super.key, required this.record, this.onPlay});
+  const HaulActionsMenu({
+    super.key,
+    required this.record,
+    this.onPlay,
+    this.menuItems,
+  });
 
   final DownloadRecord record;
   final void Function(DownloadRecord record)? onPlay;
+  final HaulMenuItems<DownloadRecord>? menuItems;
+
+  static const _removing = {HaulAction.removeKeepFile, HaulAction.delete};
 
   @override
   Widget build(BuildContext context) {
     final scope = HaulScope.of(context);
     final strings = HaulScope.stringsOf(context);
     final actions = DownloadActions.of(record, canRetry: scope.canRetry);
-    return PopupMenuButton<HaulAction>(
+    (Object, IconData, String) entry(HaulAction action) =>
+        (action, _icon(action), _label(strings, action));
+    return PopupMenuButton<Object>(
       icon: const Icon(Icons.more_vert),
-      onSelected: (action) async {
-        if (action == HaulAction.delete &&
-            !await confirmHaulDelete(context, record.title)) {
-          return;
+      onSelected: (choice) async {
+        // An export takes a while: its result is said even if the row is
+        // gone by then.
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        switch (choice) {
+          case HaulMenuItem(:final onSelected):
+            await onSelected(context);
+          case HaulAction.delete:
+            if (await confirmHaulDelete(context, record.title)) {
+              await runHaulAction(scope.engine, record, HaulAction.delete);
+            }
+          case HaulAction.export:
+            final error = await runHaulAction(
+              scope.engine,
+              record,
+              HaulAction.export,
+            );
+            messenger?.showSnackBar(
+              SnackBar(
+                content: Text(
+                  error == null ? strings.exported : strings.error(error),
+                ),
+              ),
+            );
+          case final HaulAction action:
+            await runHaulAction(scope.engine, record, action, play: onPlay);
         }
-        await runHaulAction(scope.engine, record, action, play: onPlay);
       },
-      itemBuilder: (context) => [
-        for (final action in actions.menu)
-          PopupMenuItem(
-            value: action,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(_icon(action)),
-              title: Text(_label(strings, action)),
-            ),
-          ),
-      ],
+      itemBuilder: (menuContext) => _menuRows(
+        leading: [
+          for (final a in actions.menu)
+            if (!_removing.contains(a)) entry(a),
+        ],
+        extra: menuItems?.call(context, record) ?? const [],
+        trailing: [
+          for (final a in actions.menu)
+            if (_removing.contains(a)) entry(a),
+        ],
+      ),
     );
   }
 }
@@ -348,6 +426,7 @@ class HaulDownloadTile extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.showMenu = true,
+    this.menuItems,
   });
 
   final String id;
@@ -363,6 +442,9 @@ class HaulDownloadTile extends StatelessWidget {
   final Widget Function(BuildContext context, DownloadRecord record)? subtitle;
   final Widget Function(BuildContext context, DownloadRecord record)? trailing;
   final bool showMenu;
+
+  /// The app's own entries in the menu (see [HaulActionsMenu]).
+  final HaulMenuItems<DownloadRecord>? menuItems;
 
   @override
   Widget build(BuildContext context) {
@@ -408,7 +490,12 @@ class HaulDownloadTile extends StatelessWidget {
                       actions: actions,
                       onPlay: onPlay,
                     ),
-                if (showMenu) HaulActionsMenu(record: record, onPlay: onPlay),
+                if (showMenu)
+                  HaulActionsMenu(
+                    record: record,
+                    onPlay: onPlay,
+                    menuItems: menuItems,
+                  ),
               ],
             ),
           ),

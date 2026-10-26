@@ -33,7 +33,9 @@ Nothing here knows about an app's API or account. The engine takes:
 | `FfmpegRunner` | Runs `MkvArgs`. `FfmpegKitRunner` (`package:haul/ffmpeg.dart`) by default; pass another for another build. |
 | `EngineHooks` | `onWholeFileTask`: dress the task of a file fetched in one request (a notification, which on Android keeps a long one in the foreground). |
 | `wifiOnly` | A `ValueListenable<bool>`: the user's "only on Wi-Fi", followed while it changes. Null: never. |
-| `WifiMonitor` | Whether the device is on Wi-Fi now, and when that changes (the app's connectivity package). Tells a Wi-Fi drop from a network error, and when to go on. |
+| `WifiMonitor` | Whether the device is on Wi-Fi now, and when that changes. Tells a Wi-Fi drop from a network error, and when to go on. `ConnectivityWifiMonitor` (connectivity_plus) by default when there is `wifiOnly`. |
+| `ImageFetcher` | Keeps a copy of a remote `imageUrl` in the download's folder, so it shows offline (`engine.imageOf`). `HttpImageFetcher` by default; null shows it from the network. |
+| `freeSpace` | Bytes free, to fail a download that will not fit — or an export — as `noSpace` before anything is fetched or written. `HaulAndroid.freeBytes` by default; unknown checks nothing. |
 | `EngineLogger` | Warnings and unexpected errors, for the app's crash reporting. `PrintLogger` by default. |
 
 `package:haul/testing.dart` has fakes (`FakeTransferClient` and
@@ -184,7 +186,9 @@ engine.watch(id).listen((record) {
   if (record == null) return; // deleted
   print('${record.status} ${record.progress.fraction}');
   if (record.status == DownloadStatus.done) {
-    play(engine.outputPath(record)!); // master.m3u8 or the file
+    // master.m3u8 or the file (a path or a content:// URI), with its
+    // subtitles; null once the user deleted the file.
+    engine.playable(record).then((p) => p == null ? null : play(p.locator));
   }
 });
 
@@ -196,6 +200,21 @@ await engine.delete(id, keepOutput: true); // off the list, the file stays
 final error = await engine.export(id); // a finished package → one file
 ```
 
+Around the engine, all optional:
+
+```dart
+// Progress in the notification shade, on Android (whole files keep the
+// plugin's own, which runs a big one in the foreground).
+final notifications = HaulNotifications(icon: 'ic_stat_download');
+final engine = DownloadEngine(hooks: notifications.hooks, …);
+await engine.init();
+await notifications.follow(engine);
+
+// At the first download: notifications unless allowed already, and the
+// shared folders up to Android 9.
+await HaulPermissions.forDownload();
+```
+
 To let the user pick the tracks first, resolve and plan with the planner and
 hand both over: `DownloadRequest(…, tracks: TrackChoice.selection(selection),
 plan: plan)`.
@@ -205,10 +224,10 @@ plan: plan)`.
 ```dart
 import 'package:haul/widgets.dart';
 
-final settings = HaulSettingsController(
-  HaulSettings.fromJson(stored), // the app keeps them
-  (s) => store(s.toJson()),
-);
+// In shared_preferences — or anywhere: HaulSettingsController(value, onChanged).
+const store = HaulSettingsStore();
+final settings = store.controller();
+await store.loadInto(settings);
 final engine = DownloadEngine(
   sink: HaulOutputSink(
     destination: () async => settings.value.destination,
@@ -237,20 +256,25 @@ HaulScope(
   `HaulParentProgressIcon` / `HaulParentProgressBuilder`;
   `HaulDownloadTile`, `HaulDownloadButton(downloadKey, onDownload)`,
   `HaulProgressIcon`, `HaulActionsMenu`, `HaulThumbnail`;
-  `ensureHaulSetup(context)` before the first download; `HaulFormatTile`,
-  `HaulDestinationTile`, `HaulWifiOnlyTile`, `HaulBatteryTile` for a
-  settings page.
+  `ensureHaulSetup(context)` before the first download; `HaulFormatTile`
+  (`confirm: true` asks before one file), `HaulDestinationTile`,
+  `HaulWifiOnlyTile`, `HaulBatteryTile` for a settings page.
+- **The app's own actions**: `menuItems: (context, record) => [HaulMenuItem(
+  icon:, label:, onSelected:)]` on `HaulDownloadTile`, `HaulDownloadList`
+  and `HaulParentView` (and `HaulParentActions` for a parent) — after
+  haul's actions, before the ones that remove.
 - **Replacing parts**: every row takes builders (`itemBuilder`,
   `parentBuilder`, `sectionBuilder`, `leading`, `title`, `subtitle`,
   `trailing`, `builder` on the buttons).
 - **Texts**: extend `HaulStrings` (or `HaulStringsEs`) and override what
-  differs — `error(DownloadError)` for the app's own codes.
+  differs — `error(DownloadError)` for the app's own codes,
+  `sourceError(e)` for why a source could not be read.
 - **Look**: `ThemeData.extensions: [HaulTheme(...)]`; colours and text come
   from the app's `ColorScheme` and `TextTheme` otherwise.
 - **Drawing one's own**: `HaulRecordBuilder` / `HaulKeyBuilder` /
   `HaulRecordsBuilder` / `HaulChildrenBuilder` follow records; `DownloadActions.of(record)` says what
   can be done and `runHaulAction` does it; `downloadSummary` writes the state
-  line; `playableLocator` is what a player opens.
+  line; `engine.playable(record)` is what a player opens.
 
 `example/` is an app with public test streams (HLS, DASH, a ranged MP4, a
 "show" as a parent with two seasons) that uses all of it.

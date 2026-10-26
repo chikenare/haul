@@ -46,6 +46,7 @@ void main() {
       ffmpeg: FakeFfmpeg(),
       logger: RecordingLogger(),
       thumbnails: null,
+      images: null,
     );
     android = FakeHaulAndroid();
     stored = [];
@@ -185,6 +186,71 @@ void main() {
     expect(find.byTooltip(const HaulStrings().resume), findsOneWidget);
   });
 
+  group('menuItems', () {
+    testWidgets('the app entries go before delete and get the record', (
+      tester,
+    ) async {
+      await enqueue(tester, [_request('film')]);
+      DownloadRecord? sent;
+      await tester.pumpWidget(
+        app(
+          HaulDownloadTile(
+            id: engine.records.single.id,
+            menuItems: (context, record) => [
+              HaulMenuItem(
+                icon: Icons.cast,
+                label: 'Cast',
+                onSelected: (_) => sent = record,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      final labels = tester
+          .widgetList<ListTile>(find.byType(ListTile))
+          .map((t) => (t.title! as Text).data)
+          .toList();
+      expect(labels, [
+        const HaulStrings().pause,
+        'Cast',
+        const HaulStrings().delete,
+      ]);
+
+      await tester.tap(find.text('Cast'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(sent?.id, engine.records.single.id);
+    });
+
+    testWidgets('a parent menu takes them too', (tester) async {
+      var shared = false;
+      await tester.pumpWidget(
+        app(
+          HaulParentActions(
+            parent: _loki,
+            menuItems: (context, parent) => [
+              HaulMenuItem(
+                icon: Icons.share,
+                label: 'Share ${parent.title}',
+                onSelected: (_) => shared = true,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.tap(find.byType(PopupMenuButton<Object>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Share Loki'));
+      await tester.pumpAndSettle();
+      expect(shared, isTrue);
+    });
+  });
+
   testWidgets('HaulDownloadButton asks the app to enqueue a new key', (
     tester,
   ) async {
@@ -258,6 +324,40 @@ void main() {
 
       await tapAndSettle();
       expect(engine.byKey('s1e1')!.status, isNot(DownloadStatus.paused));
+    });
+  });
+
+  group('HaulFormatTile', () {
+    testWidgets('switches straight away by default', (tester) async {
+      await tester.pumpWidget(app(const HaulFormatTile()));
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(settings.value.merge, isTrue);
+    });
+
+    testWidgets('with confirm, asks before turning one file on', (
+      tester,
+    ) async {
+      android.free = 2000000000;
+      await tester.pumpWidget(app(const HaulFormatTile(confirm: true)));
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      expect(find.text(const HaulStrings().freeSpace('2.0 GB')), findsOne);
+      await tester.tap(find.text(const HaulStrings().cancel));
+      await tester.pumpAndSettle();
+      expect(settings.value.merge, isFalse);
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(const HaulStrings().formatFileConfirmAction));
+      await tester.pumpAndSettle();
+      expect(settings.value.merge, isTrue);
+
+      // Turning it off asks nothing.
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(settings.value.merge, isFalse);
     });
   });
 

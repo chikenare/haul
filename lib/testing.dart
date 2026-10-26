@@ -329,6 +329,12 @@ class FakeHaulAndroid implements HaulAndroid {
   /// URIs that [exists] answers true for; saves add theirs.
   final existing = <String>{};
 
+  /// What [pathOf] answers for each URI; null for any other.
+  final paths = <String, String>{};
+
+  /// What [freeBytes] answers.
+  int? free;
+
   @override
   Future<HaulFolder?> pickFolder({String? initialUri}) async => picked;
 
@@ -363,10 +369,10 @@ class FakeHaulAndroid implements HaulAndroid {
   }
 
   @override
-  Future<String?> pathOf(String uri) async => null;
+  Future<String?> pathOf(String uri) async => paths[uri];
 
   @override
-  Future<int?> freeBytes() async => null;
+  Future<int?> freeBytes() async => free;
 
   @override
   Future<bool> isIgnoringBatteryOptimizations() async => batteryFree;
@@ -374,6 +380,13 @@ class FakeHaulAndroid implements HaulAndroid {
   @override
   Future<void> requestIgnoreBatteryOptimizations() async {
     batteryRequests++;
+  }
+
+  int notificationSettingsOpened = 0;
+
+  @override
+  Future<void> openNotificationSettings() async {
+    notificationSettingsOpened++;
   }
 }
 

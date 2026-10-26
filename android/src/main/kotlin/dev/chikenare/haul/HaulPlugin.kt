@@ -125,6 +125,10 @@ class HaulPlugin :
                 requestBattery(context)
                 result.success(null)
             }
+            "openNotificationSettings" -> {
+                openNotificationSettings(context)
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }
@@ -146,6 +150,25 @@ class HaulPlugin :
             )
         } else {
             Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        }
+        val from = activity?.activity
+        if (from != null) {
+            from.startActivity(intent)
+        } else {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    /** The app's notification settings, for when the system no longer asks. */
+    private fun openNotificationSettings(context: Context) {
+        val intent = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        } else {
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:${context.packageName}"),
+            )
         }
         val from = activity?.activity
         if (from != null) {

@@ -141,6 +141,16 @@ class HaulAndroid {
     );
   }
 
+  /// The app's notification settings: where notifications are turned on
+  /// once the system no longer shows its dialog.
+  Future<void> openNotificationSettings() async {
+    if (!isAndroid) return;
+    await _quiet(
+      () => _channel.invokeMethod<void>('openNotificationSettings'),
+      null,
+    );
+  }
+
   static HaulFolder? _folderOf(Map<String, String>? map) => map == null
       ? null
       : HaulFolder(uri: map['uri']!, name: map['name'] ?? map['uri']!);

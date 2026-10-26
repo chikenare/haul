@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:haul/src/engine/errors.dart';
 import 'package:haul/src/engine/model.dart';
+import 'package:haul/src/planner/errors.dart';
 
 /// Every text haul's widgets show, in English. [HaulStrings.of] picks
 /// Spanish ([HaulStringsEs]) for an `es` locale.
@@ -40,6 +41,7 @@ class HaulStrings {
   String get delete => 'Delete';
   String get removeKeepFile => 'Remove from list, keep the file';
   String get export => 'Save as a file';
+  String get exported => 'Saved as a file';
   String get cancel => 'Cancel';
   String get pauseAll => 'Pause all';
   String get resumeAll => 'Resume all';
@@ -68,6 +70,27 @@ class HaulStrings {
     _ => error.message ?? 'Something went wrong.',
   };
 
+  /// Why a source could not be read, before anything was asked for: from a
+  /// `SourceException` the planner threw; anything else is the generic
+  /// text.
+  String sourceError(Object error) {
+    final code = error is SourceException ? error.code : null;
+    if (code != null) {
+      if (SourceErrorCode.httpStatus(code) case final status?) {
+        return 'The server refused it ($status).';
+      }
+    }
+    return switch (code) {
+      SourceErrorCode.drm => 'This video is protected and cannot be saved.',
+      SourceErrorCode.live => 'A live stream cannot be downloaded.',
+      SourceErrorCode.empty => 'There is nothing to download in this video.',
+      SourceErrorCode.unsupported => 'This video format is not supported.',
+      SourceErrorCode.network => 'No connection. Try again later.',
+      SourceErrorCode.missingPieces => 'Part of the video is missing.',
+      _ => 'Something went wrong.',
+    };
+  }
+
   // Settings and the first-download sheet
   String get setupTitle => 'Before your first download';
   String get setupIntro => 'You can change all of this later in the settings.';
@@ -77,6 +100,14 @@ class HaulStrings {
   String get formatFile => 'One file (MKV)';
   String get formatFileHint =>
       'Takes a few more seconds at the end. Opens in other players.';
+
+  /// Before turning [formatFile] on (`HaulFormatTile(confirm: true)`).
+  String get formatFileConfirmTitle => 'Save as one file?';
+  String get formatFileConfirm =>
+      'The file is put together at the end of each download: keep the app '
+      'open while it is, and leave room for twice its size.';
+  String get formatFileConfirmAction => 'Turn on';
+  String freeSpace(String bytes) => 'Free: $bytes';
   String get destination => 'Where files go';
   String get destinationPublic => 'Downloads';
   String get destinationPublicHint => 'In the Downloads folder of the device.';
@@ -144,6 +175,8 @@ class HaulStringsEs extends HaulStrings {
   @override
   String get export => 'Guardar como archivo';
   @override
+  String get exported => 'Guardado como archivo';
+  @override
   String get cancel => 'Cancelar';
   @override
   String get pauseAll => 'Pausar todo';
@@ -178,6 +211,26 @@ class HaulStringsEs extends HaulStrings {
   };
 
   @override
+  String sourceError(Object error) {
+    final code = error is SourceException ? error.code : null;
+    if (code != null) {
+      if (SourceErrorCode.httpStatus(code) case final status?) {
+        return 'El servidor lo rechazó ($status).';
+      }
+    }
+    return switch (code) {
+      SourceErrorCode.drm => 'Este video está protegido y no se puede guardar.',
+      SourceErrorCode.live => 'Una transmisión en vivo no se puede descargar.',
+      SourceErrorCode.empty => 'No hay nada que descargar en este video.',
+      SourceErrorCode.unsupported =>
+        'El formato de este video no es compatible.',
+      SourceErrorCode.network => 'Sin conexión. Inténtalo más tarde.',
+      SourceErrorCode.missingPieces => 'Falta una parte del video.',
+      _ => 'Algo salió mal.',
+    };
+  }
+
+  @override
   String get setupTitle => 'Antes de tu primera descarga';
   @override
   String get setupIntro => 'Puedes cambiar todo esto después en los ajustes.';
@@ -192,6 +245,16 @@ class HaulStringsEs extends HaulStrings {
   @override
   String get formatFileHint =>
       'Tarda unos segundos más al terminar. Se abre con otros reproductores.';
+  @override
+  String get formatFileConfirmTitle => '¿Guardar como un archivo?';
+  @override
+  String get formatFileConfirm =>
+      'El archivo se arma al final de cada descarga: deja la app abierta '
+      'mientras tanto y deja espacio para el doble de su tamaño.';
+  @override
+  String get formatFileConfirmAction => 'Activar';
+  @override
+  String freeSpace(String bytes) => 'Libre: $bytes';
   @override
   String get destination => 'Dónde se guardan';
   @override

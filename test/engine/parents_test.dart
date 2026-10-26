@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:haul/haul.dart';
 import 'package:haul/testing.dart';
+import 'package:path/path.dart' as p;
 
 import 'engine_test_support.dart';
 
@@ -269,6 +271,102 @@ void main() {
       expect(record.status, DownloadStatus.done);
       expect(record.frameLocator, isNull);
       expect(engine.imageOf(record), isNull);
+    });
+  });
+
+  group('image copies', () {
+    late Env env;
+
+    setUp(() => env = Env());
+
+    const poster = 'https://img.example/poster.jpg';
+
+    test('a remote picture is kept in the folder and shown from it', () async {
+      final images = FakeImageFetcher();
+      final engine = await env.engine(images: images);
+      final result = await engine.enqueue(request(imageUrl: poster));
+      await waitUntil(() => engine.byId(result.id)!.imageLocator != null);
+
+      final record = engine.byId(result.id)!;
+      final local = engine.imageOf(record)!;
+      expect(local, isNot(poster));
+      expect(File(local).readAsStringSync(), poster);
+      expect(record.imageUrl, poster, reason: 'what the app gave stays');
+      expect(images.fetched, [poster]);
+    });
+
+    test('it survives the pieces going, and goes with the download', () async {
+      final engine = await env.engine(images: FakeImageFetcher());
+      final result = await engine.enqueue(
+        request(url: fileUrl, imageUrl: poster),
+      );
+      await waitUntil(() => engine.byId(result.id)!.imageLocator != null);
+      await env.transfer.completeAll();
+      await waitForStatus(engine, result.id, DownloadStatus.done);
+
+      final local = engine.imageOf(engine.byId(result.id)!)!;
+      expect(File(local).existsSync(), isTrue);
+
+      await engine.delete(result.id);
+      expect(File(local).existsSync(), isFalse);
+    });
+
+    test('a new picture replaces the copy of the old one', () async {
+      final engine = await env.engine(images: FakeImageFetcher());
+      final result = await engine.enqueue(request(imageUrl: poster));
+      await waitUntil(() => engine.byId(result.id)!.imageLocator != null);
+      final first = engine.imageOf(engine.byId(result.id)!)!;
+
+      const backdrop = 'https://img.example/backdrop.jpg';
+      await engine.updateDetails(result.id, imageUrl: backdrop);
+      expect(
+        engine.imageOf(engine.byId(result.id)!),
+        backdrop,
+        reason: 'from the network until its copy is there',
+      );
+      await waitUntil(() => engine.byId(result.id)!.imageLocator != null);
+
+      final second = engine.imageOf(engine.byId(result.id)!)!;
+      expect(File(second).readAsStringSync(), backdrop);
+      expect(File(first).existsSync(), isFalse);
+    });
+
+    test('one that cannot be fetched is shown from the network, and tried '
+        'again at the next start', () async {
+      final images = FakeImageFetcher(fails: true);
+      final engine = await env.engine(json: true, images: images);
+      final result = await engine.enqueue(request(imageUrl: poster));
+      await waitUntil(() => images.fetched.isNotEmpty);
+      expect(engine.imageOf(engine.byId(result.id)!), poster);
+
+      images.fails = false;
+      final again = await env.engine(json: true, images: images);
+      await waitUntil(() => again.byId(result.id)!.imageLocator != null);
+      expect(images.fetched, [poster, poster]);
+    });
+
+    test('a local picture is not copied', () async {
+      final images = FakeImageFetcher();
+      final engine = await env.engine(images: images);
+      final result = await engine.enqueue(request(imageUrl: '/data/p.jpg'));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(images.fetched, isEmpty);
+      expect(engine.imageOf(engine.byId(result.id)!), '/data/p.jpg');
+    });
+
+    test('deleted while it is fetched, nothing is left behind', () async {
+      final images = FakeImageFetcher()..gate = Completer<void>();
+      final engine = await env.engine(images: images);
+      final result = await engine.enqueue(request(imageUrl: poster));
+      await waitUntil(() => images.fetched.isNotEmpty);
+
+      await engine.delete(result.id);
+      images.gate!.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(
+        Directory(p.join(env.dir.path, 'haul', result.id)).existsSync(),
+        isFalse,
+      );
     });
   });
 }

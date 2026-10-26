@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:haul/src/planner/assembly/local_packager.dart';
 import 'package:haul/src/planner/media_options.dart';
 import 'package:haul/src/planner/plan.dart';
 import 'package:haul/src/planner/sources/source_request.dart';
@@ -277,6 +278,10 @@ abstract class DownloadRecord with _$DownloadRecord {
     /// A frame of the finished download, made when it came without
     /// [imageUrl] (see `DownloadEngine.imageOf`): `work:thumbnail.jpg`.
     String? frameLocator,
+
+    /// A copy of a remote [imageUrl] in the download's folder, to show it
+    /// offline: `work:image-<hash>.jpg`.
+    String? imageLocator,
     required DownloadStatus status,
     DownloadError? error,
     @_SourceConverter() required SourceRequest source,
@@ -385,3 +390,16 @@ enum EnqueueOutcome {
 }
 
 typedef EnqueueResult = ({String id, EnqueueOutcome outcome});
+
+/// What a player opens for a finished download (see
+/// `DownloadEngine.playable`).
+@immutable
+class PlayableDownload {
+  const PlayableDownload({required this.locator, this.subtitles = const []});
+
+  /// A path, or a `content://` URI on Android.
+  final String locator;
+
+  /// Kept as files beside it: a package's, or the sidecars of one file.
+  final List<PackagedSubtitle> subtitles;
+}

@@ -181,6 +181,9 @@ class Env {
     WifiMonitor? wifi,
     SourceFetcher? fetcher,
     ThumbnailGrabber? thumbnails,
+    ImageFetcher? images,
+    Future<int?> Function()? freeSpace,
+    HaulAndroid? android,
     bool init = true,
   }) async {
     final engine = DownloadEngine(
@@ -199,6 +202,11 @@ class Env {
       wifi: wifi,
       // No ffmpeg here: a frame is only taken when a test asks for it.
       thumbnails: thumbnails,
+      // No network here: a picture is only copied when a test asks for it.
+      images: images,
+      // Unknown unless a test says: nothing is checked.
+      freeSpace: freeSpace ?? () async => null,
+      android: android ?? FakeHaulAndroid(isAndroid: false),
     );
     addTearDown(engine.dispose);
     if (init) await engine.init();
@@ -233,6 +241,7 @@ DownloadRequest request({
   DownloadPlan? plan,
   Map<String, Object?> metadata = const {},
   DownloadParent? parent,
+  String? imageUrl,
 }) => DownloadRequest(
   key: key,
   title: title,
@@ -248,6 +257,7 @@ DownloadRequest request({
   output: output,
   metadata: metadata,
   parent: parent,
+  imageUrl: imageUrl,
 );
 
 /// Answers a fixed source, counts the calls, or throws [error].
@@ -369,5 +379,26 @@ Future<DownloadRecord> finish(
 Future<void> settle([int rounds = 20]) async {
   for (var i = 0; i < rounds; i++) {
     await Future<void>.delayed(Duration.zero);
+  }
+}
+
+/// Writes [bytes] for every URL it is asked for, unless [fails].
+class FakeImageFetcher implements ImageFetcher {
+  FakeImageFetcher({this.fails = false});
+
+  bool fails;
+  final List<String> fetched = [];
+
+  /// Held until completed, when set: a fetch still in flight.
+  Completer<void>? gate;
+
+  @override
+  Future<bool> fetch(String url, File file) async {
+    fetched.add(url);
+    await gate?.future;
+    if (fails) return false;
+    await file.parent.create(recursive: true);
+    await file.writeAsString(url);
+    return true;
   }
 }

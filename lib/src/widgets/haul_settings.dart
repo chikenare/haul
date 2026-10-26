@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:haul/src/engine/haul_output_sink.dart';
 import 'package:haul/src/engine/model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// The user's download settings, as one value. haul does not store it:
 /// the app keeps [toJson] wherever it keeps its preferences and hands it to
@@ -92,6 +96,51 @@ class HaulSettingsController extends ValueNotifier<HaulSettings> {
     value = next;
     onChanged?.call(next);
   }
+}
+
+/// Keeps [HaulSettings] in shared_preferences, as JSON under [key] — for
+/// an app with nowhere of its own to keep them; any other place works
+/// through `HaulSettingsController.onChanged`.
+///
+/// ```dart
+/// final store = HaulSettingsStore();
+/// final settings = store.controller(); // the defaults, saving every change
+/// await store.loadInto(settings); // at start, before the first download
+/// ```
+class HaulSettingsStore {
+  const HaulSettingsStore({
+    this.key = 'haul.settings',
+    this.defaults = const HaulSettings(),
+  });
+
+  final String key;
+
+  /// Until something is stored, and when what is stored cannot be read.
+  final HaulSettings defaults;
+
+  Future<HaulSettings> load() async {
+    final json = (await SharedPreferences.getInstance()).getString(key);
+    if (json == null) return defaults;
+    try {
+      return HaulSettings.fromJson(jsonDecode(json) as Map<String, Object?>);
+    } on Object {
+      return defaults;
+    }
+  }
+
+  Future<void> save(HaulSettings settings) async =>
+      (await SharedPreferences.getInstance()).setString(
+        key,
+        jsonEncode(settings.toJson()),
+      );
+
+  /// At [defaults], saving every change.
+  HaulSettingsController controller() =>
+      HaulSettingsController(defaults, (s) => unawaited(save(s)));
+
+  /// What is stored, into [controller] — not a change, so not saved again.
+  Future<void> loadInto(HaulSettingsController controller) async =>
+      controller.value = await load();
 }
 
 /// One field of a [ValueListenable], notifying only when it changes.

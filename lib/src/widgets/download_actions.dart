@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:haul/src/android/haul_android.dart';
 import 'package:haul/src/engine/download_engine.dart';
 import 'package:haul/src/engine/model.dart';
 import 'package:haul/src/widgets/haul_strings.dart';
@@ -73,8 +72,9 @@ class DownloadActions {
 }
 
 /// Does [action] on [record]. [play] is the app's: haul does not know its
-/// player. Deleting asks nothing here; the widgets confirm first.
-Future<void> runHaulAction(
+/// player. Deleting asks nothing here; the widgets confirm first. Answers
+/// why an export did not happen, or null.
+Future<DownloadError?> runHaulAction(
   DownloadEngine engine,
   DownloadRecord record,
   HaulAction action, {
@@ -90,22 +90,13 @@ Future<void> runHaulAction(
     case HaulAction.play:
       play?.call(record);
     case HaulAction.export:
-      await engine.export(record.id);
+      return engine.export(record.id);
     case HaulAction.removeKeepFile:
       await engine.delete(record.id, keepOutput: true);
     case HaulAction.delete:
       await engine.delete(record.id);
   }
-}
-
-/// What a player opens for a finished download: its path, or its
-/// `content://` URI on Android. Null before it is done.
-String? playableLocator(DownloadEngine engine, DownloadRecord record) {
-  if (record.status != DownloadStatus.done) return null;
-  final path = engine.outputPath(record);
-  if (path != null) return path;
-  final locator = record.outputLocator;
-  return locator != null && HaulAndroid.isContentUri(locator) ? locator : null;
+  return null;
 }
 
 /// `Downloading · 42% · 1.2 GB / 3.0 GB`, or the final size once done.

@@ -4,4 +4,6 @@
       restricts it, so an app opts in by adding it to its own manifest. Without
       it, asking opens the system's battery settings list instead.
     -->
+    <!-- The progress of downloads (HaulNotifications), Android 13 and up. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

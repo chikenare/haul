@@ -16,9 +16,14 @@ class HaulDownloadList extends StatelessWidget {
     this.parentBuilder,
     this.empty,
     this.padding,
+    this.menuItems,
   });
 
   final void Function(DownloadRecord record)? onPlay;
+
+  /// The app's own entries in each default row's menu (see
+  /// `HaulActionsMenu`).
+  final HaulMenuItems<DownloadRecord>? menuItems;
 
   /// What tapping a parent does: usually a screen with [HaulParentView].
   final void Function(ParentDownloads parent)? onOpenParent;
@@ -52,7 +57,12 @@ class HaulDownloadList extends StatelessWidget {
           itemBuilder: (context, i) => switch (entries[i]) {
             SingleDownload(:final id) =>
               itemBuilder?.call(context, id) ??
-                  HaulDownloadTile(key: ValueKey(id), id: id, onPlay: onPlay),
+                  HaulDownloadTile(
+                    key: ValueKey(id),
+                    id: id,
+                    onPlay: onPlay,
+                    menuItems: menuItems,
+                  ),
             final ParentDownloads parent =>
               parentBuilder?.call(context, parent) ??
                   HaulParentTile(
@@ -351,10 +361,15 @@ class HaulParentView extends StatelessWidget {
     this.sectionBuilder,
     this.onEmpty,
     this.padding,
+    this.menuItems,
   });
 
   final String parentId;
   final void Function(DownloadRecord record)? onPlay;
+
+  /// The app's own entries in each default row's menu (see
+  /// `HaulActionsMenu`).
+  final HaulMenuItems<DownloadRecord>? menuItems;
   final String? Function(DownloadRecord record)? sectionOf;
   final Comparator<DownloadRecord>? sort;
   final Widget Function(BuildContext context, String id)? itemBuilder;
@@ -404,6 +419,7 @@ class HaulParentView extends StatelessWidget {
                   key: ValueKey(child.id),
                   id: child.id,
                   onPlay: onPlay,
+                  menuItems: menuItems,
                 ),
           );
         }
@@ -413,25 +429,28 @@ class HaulParentView extends StatelessWidget {
   }
 }
 
-/// A parent's own actions, for an app bar: pause all, resume all, delete
-/// all (asked first).
+/// A parent's own actions, for an app bar: pause all, resume all, the
+/// app's [menuItems], delete all (asked first).
 class HaulParentActions extends StatelessWidget {
-  const HaulParentActions({super.key, required this.parent});
+  const HaulParentActions({super.key, required this.parent, this.menuItems});
 
   final DownloadParent parent;
+  final HaulMenuItems<DownloadParent>? menuItems;
 
   @override
   Widget build(BuildContext context) {
     final engine = HaulScope.of(context).engine;
     final strings = HaulScope.stringsOf(context);
-    return PopupMenuButton<int>(
+    return PopupMenuButton<Object>(
       onSelected: (choice) async {
         switch (choice) {
-          case 0:
+          case HaulMenuItem(:final onSelected):
+            await onSelected(context);
+          case _ParentAction.pause:
             await engine.pauseParent(parent.id);
-          case 1:
+          case _ParentAction.resume:
             await engine.resumeParent(parent.id);
-          case 2:
+          case _ParentAction.delete:
             final count = engine.childrenOf(parent.id).length;
             final yes = await showDialog<bool>(
               context: context,
@@ -452,11 +471,24 @@ class HaulParentActions extends StatelessWidget {
             if (yes ?? false) await engine.deleteParent(parent.id);
         }
       },
-      itemBuilder: (context) => [
-        PopupMenuItem(value: 0, child: Text(strings.pauseAll)),
-        PopupMenuItem(value: 1, child: Text(strings.resumeAll)),
-        PopupMenuItem(value: 2, child: Text(strings.deleteAll)),
+      itemBuilder: (menuContext) => [
+        PopupMenuItem(
+          value: _ParentAction.pause,
+          child: Text(strings.pauseAll),
+        ),
+        PopupMenuItem(
+          value: _ParentAction.resume,
+          child: Text(strings.resumeAll),
+        ),
+        for (final item in menuItems?.call(context, parent) ?? const [])
+          PopupMenuItem(value: item, child: Text(item.label)),
+        PopupMenuItem(
+          value: _ParentAction.delete,
+          child: Text(strings.deleteAll),
+        ),
       ],
     );
   }
 }
+
+enum _ParentAction { pause, resume, delete }

@@ -174,9 +174,12 @@ class HaulDestinationChoice extends StatelessWidget {
   }
 }
 
-/// Settings row: one file or the app's package.
+/// Settings row: one file or the app's package. With [confirm], turning
+/// one file on asks first (see [confirmHaulFormatFile]).
 class HaulFormatTile extends StatelessWidget {
-  const HaulFormatTile({super.key});
+  const HaulFormatTile({super.key, this.confirm = false});
+
+  final bool confirm;
 
   @override
   Widget build(BuildContext context) {
@@ -186,11 +189,56 @@ class HaulFormatTile extends StatelessWidget {
         title: Text(strings.formatFile),
         subtitle: Text(strings.formatFileHint),
         value: settings.merge,
-        onChanged: (merge) =>
-            controller.update((s) => s.copyWith(merge: merge)),
+        onChanged: (merge) async {
+          if (merge && confirm && !await confirmHaulFormatFile(context)) {
+            return;
+          }
+          controller.update((s) => s.copyWith(merge: merge));
+        },
       ),
     );
   }
+}
+
+/// Before turning one file on: the file is put together at the end, with
+/// the app open, beside the pieces — and how much is free, when known.
+/// True when the user agreed.
+Future<bool> confirmHaulFormatFile(BuildContext context) async {
+  final scope = HaulScope.of(context);
+  final strings = HaulScope.stringsOf(context);
+  final free = await scope.android.freeBytes();
+  if (!context.mounted) return false;
+  final yes = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: Text(strings.formatFileConfirmTitle),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(strings.formatFileConfirm),
+          if (free != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              strings.freeSpace(strings.bytes(free)),
+              style: Theme.of(dialog).textTheme.titleSmall,
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialog, false),
+          child: Text(strings.cancel),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialog, true),
+          child: Text(strings.formatFileConfirmAction),
+        ),
+      ],
+    ),
+  );
+  return yes ?? false;
 }
 
 /// Settings row: where files go, opening the choice in a dialog. Says so

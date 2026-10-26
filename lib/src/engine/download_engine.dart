@@ -7,8 +7,10 @@ import 'dart:math';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
+import 'package:haul/src/android/haul_android.dart';
 import 'package:haul/src/engine/errors.dart';
 import 'package:haul/src/engine/extension_points.dart';
+import 'package:haul/src/engine/http_image_fetcher.dart';
 import 'package:haul/src/engine/model.dart';
 import 'package:haul/src/engine/output_sinks.dart';
 import 'package:haul/src/engine/parents.dart';
@@ -26,6 +28,7 @@ import 'package:haul/src/planner/plan.dart';
 import 'package:haul/src/planner/sources/resolved_source.dart';
 import 'package:haul/src/planner/sources/source_resolver.dart';
 import 'package:haul/src/planner/track_criteria.dart';
+import 'package:haul/src/support/connectivity_wifi_monitor.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -103,6 +106,9 @@ class DownloadEngine {
     WifiMonitor? wifi,
     EngineLogger logger = const PrintLogger(),
     ThumbnailGrabber? thumbnails = const FrameGrabber(),
+    ImageFetcher? images = const HttpImageFetcher(),
+    Future<int?> Function()? freeSpace,
+    HaulAndroid android = HaulAndroid.i,
     TransferClient? transfer,
     SourceResolver resolver = const SourceResolver(),
     RecordStore? store,
@@ -113,9 +119,13 @@ class DownloadEngine {
        _ffmpeg = ffmpeg ?? const FfmpegKitRunner(),
        _hooks = hooks,
        _wifiOnly = wifiOnly,
-       _wifi = wifi,
+       // Only needed to honour "only on Wi-Fi".
+       _wifi = wifi ?? (wifiOnly == null ? null : ConnectivityWifiMonitor()),
        _logger = logger,
        _thumbnails = thumbnails,
+       _images = images,
+       _freeSpace = freeSpace ?? android.freeBytes,
+       _android = android,
        _transfer = transfer ?? PluginTransferClient(),
        _resolver = resolver,
        _appSupport = appSupport ?? getApplicationSupportDirectory,
@@ -132,15 +142,25 @@ class DownloadEngine {
   /// followed while it changes. Null: never.
   final ValueListenable<bool>? _wifiOnly;
 
-  /// Tells a Wi-Fi drop from a network error, and when to go on. Without
-  /// it, a piece the platform held for Wi-Fi until it ran out of retries
-  /// fails the download as a network error.
+  /// Tells a Wi-Fi drop from a network error, and when to go on.
+  /// `ConnectivityWifiMonitor` by default when there is [_wifiOnly].
   final WifiMonitor? _wifi;
   final EngineLogger _logger;
 
   /// Takes a frame of a finished download that came without an image;
   /// null: none is made.
   final ThumbnailGrabber? _thumbnails;
+
+  /// Keeps a copy of a remote [DownloadRecord.imageUrl] to show it
+  /// offline; null: it is shown from the network.
+  final ImageFetcher? _images;
+
+  /// Bytes free where pieces are fetched and merged; null when unknown
+  /// (then nothing is checked). `HaulAndroid.freeBytes` by default.
+  final Future<int?> Function() _freeSpace;
+
+  /// Reads the `content://` files a sink published (see [playable]).
+  final HaulAndroid _android;
   final TransferClient _transfer;
   final SourceResolver _resolver;
   final Future<Directory> Function() _appSupport;
@@ -268,6 +288,7 @@ class DownloadEngine {
 
     _emit();
     unawaited(_pump());
+    unawaited(_copyMissingImages());
   }
 
   /// Starts the engine if the app has not: every public call works on a
@@ -414,16 +435,53 @@ class DownloadEngine {
     return p.isAbsolute(locator) ? locator : null;
   }
 
-  /// What to show a download by: the app's [DownloadRecord.imageUrl], or
-  /// the path of the frame taken of it once finished. Null while neither
-  /// is there.
-  String? imageOf(DownloadRecord record) {
-    if (record.imageUrl case final url?) return url;
-    final thumbnail = record.frameLocator;
-    if (thumbnail == null || !thumbnail.startsWith(_workPrefix)) return null;
+  /// What to show a download by: the app's [DownloadRecord.imageUrl] — the
+  /// local copy of it once there is one — or the path of the frame taken of
+  /// it once finished. Null while neither is there.
+  String? imageOf(DownloadRecord record) =>
+      _inWork(record, record.imageLocator) ??
+      record.imageUrl ??
+      _inWork(record, record.frameLocator);
+
+  /// The path of a `work:` [locator] of [record]'s.
+  String? _inWork(DownloadRecord record, String? locator) {
+    if (locator == null || !locator.startsWith(_workPrefix)) return null;
     return p.join(
       _workDir(record.id).path,
-      thumbnail.substring(_workPrefix.length),
+      locator.substring(_workPrefix.length),
+    );
+  }
+
+  /// What a player opens for [record]: its file's path or `content://`
+  /// URI, and the subtitles kept beside it. Null before it is done, and
+  /// once its file is gone — the user deleted it from their folder. With
+  /// [needsPath], a URI becomes the path behind it, for what only takes
+  /// paths (a cast receiver served from the device); null when there is
+  /// none.
+  Future<PlayableDownload?> playable(
+    DownloadRecord record, {
+    bool needsPath = false,
+  }) async {
+    if (record.status != DownloadStatus.done) return null;
+    var locator = outputPath(record) ?? record.outputLocator;
+    if (locator == null) return null;
+    if (HaulAndroid.isContentUri(locator)) {
+      if (needsPath) {
+        locator = await _android.pathOf(locator);
+      } else if (!await _android.exists(locator)) {
+        return null;
+      }
+    } else if (!p.isAbsolute(locator)) {
+      // The sink's own: haul cannot tell what it is.
+      return null;
+    }
+    if (locator == null) return null;
+    if (!HaulAndroid.isContentUri(locator) && !await File(locator).exists()) {
+      return null;
+    }
+    return PlayableDownload(
+      locator: locator,
+      subtitles: await subtitlesOf(record.id),
     );
   }
 
@@ -514,6 +572,9 @@ class DownloadEngine {
             frameLocator: null,
             parent: request.parent,
             imageUrl: request.imageUrl,
+            imageLocator: existing?.imageUrl == request.imageUrl
+                ? existing?.imageLocator
+                : null,
             status: DownloadStatus.queued,
             error: null,
             source: request.source,
@@ -534,6 +595,7 @@ class DownloadEngine {
           ),
     );
     unawaited(_pump());
+    unawaited(_copyImage(id));
     return (
       id: id,
       outcome: existing == null
@@ -671,8 +733,8 @@ class DownloadEngine {
   }
 
   /// Files a download under [parent], with [imageUrl] — only what is
-  /// given changes. For downloads asked for before the app gave them a
-  /// parent: read their `metadata` and file them here.
+  /// given changes. For downloads asked for before
+  /// the app gave them a parent: read their `metadata` and file them here.
   Future<void> updateDetails(
     String id, {
     DownloadParent? parent,
@@ -685,11 +747,15 @@ class DownloadEngine {
   void _updateDetails(String id, {DownloadParent? parent, String? imageUrl}) {
     final record = _records[id];
     if (record == null) return;
+    final newImage = imageUrl != null && imageUrl != record.imageUrl;
     final updated = record.copyWith(
       parent: parent ?? record.parent,
       imageUrl: imageUrl ?? record.imageUrl,
+      imageLocator: newImage ? null : record.imageLocator,
     );
-    if (updated != record) _put(updated);
+    if (updated == record) return;
+    _put(updated);
+    if (newImage) unawaited(_copyImage(id));
   }
 
   /// Replaces the app's data on a record.
@@ -704,12 +770,23 @@ class DownloadEngine {
   /// record's. The package goes once the file is written: keeping both
   /// would take the title's space twice.
   ///
-  /// Answers null when done, or why not. A failure before the file was
+  /// Answers null when done, or why not — [DownloadErrorCode.noSpace]
+  /// straight away when the file would not fit beside the package. A
+  /// failure before the file was
   /// written leaves the package as it was, still done; after it, the
   /// download fails as any publish would, and [retry] only publishes again.
   /// Throws [StateError] when [id] is not a finished package.
   Future<DownloadError?> export(String id, {OutputName? name}) async {
     await _whenReady();
+    // The file is written beside the package: it takes its size again.
+    if (_records[id] case final r?
+        when r.status == DownloadStatus.done &&
+            r.outputKind == OutputKind.package) {
+      final free = await _freeSpace();
+      if (free != null && free < r.progress.totalBytes) {
+        return const DownloadError(code: DownloadErrorCode.noSpace);
+      }
+    }
     final before = _records[id];
     final exported = _transition(
       id,
@@ -927,6 +1004,12 @@ class DownloadEngine {
     }
 
     var record = _records[id];
+    if (record?.status != DownloadStatus.resolving) return;
+    if (await _lacksSpace(plan, settledBytes, record!.output)) {
+      _fail(id, const DownloadError(code: DownloadErrorCode.noSpace));
+      return;
+    }
+    record = _records[id];
     if (record?.status != DownloadStatus.resolving) return;
     // A new run, saved before any of its tasks exists: after a kill, the
     // next engine must know which tasks are this attempt's.
@@ -1705,7 +1788,10 @@ class DownloadEngine {
       p.normalize(p.join(work.path, _subsDir)),
     };
     await for (final entity in work.list()) {
-      if (keep.contains(p.normalize(entity.path))) continue;
+      if (keep.contains(p.normalize(entity.path)) ||
+          p.basename(entity.path).startsWith(_imagePrefix)) {
+        continue;
+      }
       await _deleteQuietly(entity);
     }
   }
@@ -1775,6 +1861,91 @@ class DownloadEngine {
   }
 
   static const _thumbnailFile = 'thumbnail.jpg';
+
+  /// Whether what is left of [plan] cannot fit: what is still to fetch
+  /// and, for one file, the file merged beside the pieces. Unknown — no
+  /// weight, or no reading of the free space — fits.
+  Future<bool> _lacksSpace(
+    DownloadPlan plan,
+    int settledBytes,
+    OutputMode output,
+  ) async {
+    if (plan.expectedBytes <= 0) return false;
+    final free = await _freeSpace();
+    if (free == null) return false;
+    final merged = output.kind == OutputKind.file ? plan.expectedBytes : 0;
+    return free < plan.expectedBytes - settledBytes + merged;
+  }
+
+  // ---------------------------------------------------------------------
+  // Pictures
+
+  /// Copies of pictures being fetched: download id → its URL.
+  final Map<String, String> _copyingImages = {};
+
+  /// The copy of each remote picture that has none yet — one that failed
+  /// before, or came before the engine kept copies. One at a time, after
+  /// the queue started.
+  Future<void> _copyMissingImages() async {
+    for (final id in _records.keys.toList()) {
+      if (_disposed) return;
+      await _copyImage(id);
+    }
+  }
+
+  /// Keeps [id]'s remote picture in its folder, named by its URL — a new
+  /// picture is a new file, so no image cache shows the old one — and
+  /// drops the copies of earlier ones. A picture that cannot be fetched is
+  /// shown from the network, and tried again at the next start.
+  Future<void> _copyImage(String id) async {
+    final fetcher = _images;
+    final record = _records[id];
+    final url = record?.imageUrl;
+    if (fetcher == null ||
+        record == null ||
+        url == null ||
+        record.imageLocator != null ||
+        !(url.startsWith('http://') || url.startsWith('https://')) ||
+        _copyingImages[id] == url) {
+      return;
+    }
+    _copyingImages[id] = url;
+    try {
+      final name = '$_imagePrefix${_fnv(url).toRadixString(16)}.jpg';
+      final file = File(p.join(_workDir(id).path, name));
+      if (!await file.exists() && !await fetcher.fetch(url, file)) return;
+      final current = _records[id];
+      if (_disposed || current == null) {
+        // Deleted meanwhile: its folder went before this file came back.
+        await _deleteQuietly(_workDir(id));
+        return;
+      }
+      if (current.imageUrl != url) return;
+      _put(current.copyWith(imageLocator: '$_workPrefix$name'));
+      await for (final entity in _workDir(id).list()) {
+        final other = p.basename(entity.path);
+        if (other.startsWith(_imagePrefix) && other != name) {
+          await _deleteQuietly(entity);
+        }
+      }
+    } on Object catch (e, st) {
+      _logger.error(e, st, context: {'id': id, 'step': 'image'});
+    } finally {
+      if (_copyingImages[id] == url) _copyingImages.remove(id);
+    }
+  }
+
+  static const _imagePrefix = 'image-';
+
+  /// FNV-1a: the same name for the same URL on every run, unlike
+  /// `String.hashCode`.
+  static int _fnv(String text) {
+    var hash = 0x811c9dc5;
+    for (final unit in text.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    return hash;
+  }
 
   bool _transitionToDone(
     String id, {
@@ -1925,7 +2096,9 @@ class DownloadEngine {
     await for (final entity in work.list()) {
       // The record, and the temporary file of a write of it in flight:
       // deleting that one fails the write's rename.
-      if (p.basename(entity.path).startsWith(JsonRecordStore.recordFile)) {
+      final name = p.basename(entity.path);
+      if (name.startsWith(JsonRecordStore.recordFile) ||
+          name.startsWith(_imagePrefix)) {
         continue;
       }
       await _deleteQuietly(entity);
