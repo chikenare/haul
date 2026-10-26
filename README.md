@@ -238,27 +238,25 @@ final haul = HaulController(
   canRetry: (e) => e.code != 'quota', // the app's codes a retry won't fix
 );
 
+// Every download: loose ones as rows, a parent as one row that opens in
+// place to show its children below it, with headings and order from what
+// the app keeps in each (`metadata`).
 HaulDownloadList(
   controller: haul,
   onPlay: play,
-  onOpenParent: (entry) => open(ParentScreen(entry.parent)),
-);
-
-// The screen of a parent: its children, headings and order from what the
-// app keeps in each (`metadata`).
-HaulParentView(
-  controller: haul,
-  parentId: parent.id,
   sectionOf: (r) => 'Season ${r.metadata['season']}',
+  sort: (a, b) => a.title.compareTo(b.title),
 );
-HaulParentActions(controller: haul, parent: parent); // for its app bar
 ```
 
+- **Parents**: tapping the row opens or closes it; its ⋮ menu pauses,
+  resumes or deletes all its children.
+
 - **The app's own actions**: `menuItems: (context, record) => [HaulMenuItem(
-  icon:, label:, onSelected:)]` on `HaulDownloadList` and `HaulParentView`
-  (and `HaulParentActions` for a parent) — after haul's actions, before the
+  icon:, label:, onSelected:)]` on `HaulDownloadList`, and
+  `parentMenuItems` for a parent's menu — after haul's actions, before the
   ones that remove.
-- **Replacing rows**: `itemBuilder`, `parentBuilder`, `sectionBuilder`.
+- **Replacing rows**: `itemBuilder`, `sectionBuilder`.
 - **Texts**: extend `HaulStrings` (or `HaulStringsEs`) and override what
   differs — `error(DownloadError)` for the app's own codes,
   `sourceError(e)` for why a source could not be read.

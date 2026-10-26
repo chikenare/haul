@@ -71,7 +71,7 @@ void main() {
       });
 
   group('HaulDownloadList', () {
-    testWidgets('a parent is one row; a loose download its own', (
+    testWidgets('a parent is one row that opens there into its children', (
       tester,
     ) async {
       await enqueue(tester, [
@@ -79,21 +79,23 @@ void main() {
         _request('e2', parent: _loki),
         _request('film'),
       ]);
-      ParentDownloads? opened;
-      await tester.pumpWidget(
-        app(
-          HaulDownloadList(controller: haul(), onOpenParent: (p) => opened = p),
-        ),
-      );
+      await tester.pumpWidget(app(HaulDownloadList(controller: haul())));
       await tester.pump();
 
       expect(find.byType(HaulParentTile), findsOneWidget);
       expect(find.byType(HaulDownloadTile), findsOneWidget);
       expect(find.text('Loki'), findsOneWidget);
       expect(find.text(const HaulStrings().doneOf(0, 2)), findsOneWidget);
+      expect(find.text('e1'), findsNothing);
 
-      await tester.tap(find.byType(HaulParentTile));
-      expect(opened?.parent.id, 'loki');
+      await tester.tap(find.text('Loki'));
+      await tester.pump();
+      expect(find.text('e1'), findsOneWidget);
+      expect(find.text('e2'), findsOneWidget);
+
+      await tester.tap(find.text('Loki'));
+      await tester.pump();
+      expect(find.text('e1'), findsNothing);
     });
 
     testWidgets('empty says so, in the app strings', (tester) async {
@@ -126,24 +128,14 @@ void main() {
     });
   });
 
-  testWidgets('HaulParentView says it is empty once, however often it '
-      'rebuilds', (tester) async {
-    var emptied = 0;
-    Widget view() => app(
-      HaulParentView(
-        controller: haul(),
-        parentId: 'nobody',
-        onEmpty: () => emptied++,
-      ),
-    );
-    await tester.pumpWidget(view());
+  Future<void> openLoki(WidgetTester tester, Widget list) async {
+    await tester.pumpWidget(app(list));
     await tester.pump();
-    await tester.pumpWidget(view());
+    await tester.tap(find.text('Loki'));
     await tester.pump();
-    expect(emptied, 1);
-  });
+  }
 
-  testWidgets('HaulParentView heads children with what the app says', (
+  testWidgets('an open parent heads its children with what the app says', (
     tester,
   ) async {
     await enqueue(tester, [
@@ -151,16 +143,13 @@ void main() {
       _request('Loki S01E02', parent: _loki, season: 1),
       _request('Loki S01E01', parent: _loki, season: 1),
     ]);
-    await tester.pumpWidget(
-      app(
-        HaulParentView(
-          controller: haul(),
-          parentId: 'loki',
-          sectionOf: (r) => 'Season ${r.metadata['season']}',
-        ),
+    await openLoki(
+      tester,
+      HaulDownloadList(
+        controller: haul(),
+        sectionOf: (r) => 'Season ${r.metadata['season']}',
       ),
     );
-    await tester.pump();
 
     expect(find.text('Season 1'), findsOneWidget);
     expect(find.text('Season 2'), findsOneWidget);
@@ -171,23 +160,20 @@ void main() {
     expect(y('Season 2'), lessThan(y('Loki S02E01')));
   });
 
-  testWidgets('HaulParentView follows the app order when given', (
+  testWidgets('an open parent follows the app order when given', (
     tester,
   ) async {
     await enqueue(tester, [
       _request('a', parent: _loki, season: 1),
       _request('b', parent: _loki, season: 2),
     ]);
-    await tester.pumpWidget(
-      app(
-        HaulParentView(
-          controller: haul(),
-          parentId: 'loki',
-          sort: (x, y) => y.title.compareTo(x.title),
-        ),
+    await openLoki(
+      tester,
+      HaulDownloadList(
+        controller: haul(),
+        sort: (x, y) => y.title.compareTo(x.title),
       ),
     );
-    await tester.pump();
     expect(
       tester.getTopLeft(find.text('b')).dy,
       lessThan(tester.getTopLeft(find.text('a')).dy),
@@ -253,13 +239,13 @@ void main() {
     });
 
     testWidgets('a parent menu takes them too', (tester) async {
+      await enqueue(tester, [_request('e1', parent: _loki)]);
       var shared = false;
       await tester.pumpWidget(
         app(
-          HaulParentActions(
+          HaulDownloadList(
             controller: haul(),
-            parent: _loki,
-            menuItems: (context, parent) => [
+            parentMenuItems: (context, parent) => [
               HaulMenuItem(
                 icon: Icons.share,
                 label: 'Share ${parent.title}',
@@ -269,8 +255,15 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.byType(PopupMenuButton<Object>));
+      await tester.pump();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(HaulParentTile),
+          matching: find.byType(PopupMenuButton<Object>),
+        ),
+      );
       await tester.pumpAndSettle();
+      expect(find.text(const HaulStrings().pauseAll), findsOneWidget);
       await tester.tap(find.text('Share Loki'));
       await tester.pumpAndSettle();
       expect(shared, isTrue);

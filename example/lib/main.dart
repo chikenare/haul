@@ -89,11 +89,12 @@ class _HomeScreenState extends State<HomeScreen> {
         1 => HaulDownloadList(
           controller: haul,
           onPlay: (record) => openPlayer(context, record),
-          onOpenParent: (entry) => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => ParentScreen(parent: entry.parent),
-            ),
-          ),
+          // A parent opens in place; headings from the app's own data, and
+          // the titles already sort.
+          sectionOf: (r) => switch (seasonOf(r)) {
+            final season? => 'Season $season',
+            null => null,
+          },
         ),
         _ => const SettingsScreen(),
       },
@@ -180,33 +181,6 @@ class _SeasonRow extends StatelessWidget {
         onPressed: () => haul.engine.enqueueAll([
           for (final item in items) item.request(output(context)),
         ]),
-      ),
-    );
-  }
-}
-
-class ParentScreen extends StatelessWidget {
-  const ParentScreen({super.key, required this.parent});
-
-  final DownloadParent parent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(parent.title),
-        actions: [HaulParentActions(controller: haul, parent: parent)],
-      ),
-      body: HaulParentView(
-        controller: haul,
-        parentId: parent.id,
-        // Headings from the app's own data; the titles already sort.
-        sectionOf: (r) => switch (seasonOf(r)) {
-          final season? => 'Season $season',
-          null => null,
-        },
-        onPlay: (record) => openPlayer(context, record),
-        onEmpty: () => Navigator.of(context).maybePop(),
       ),
     );
   }

@@ -61,8 +61,13 @@
   `HaulPermissions.enableNotifications`, and on Android picking folders
   with SAF, writing into them and the battery saver.
 - `package:haul/widgets.dart` is the downloads list only: `HaulDownloadList`,
-  `HaulParentView`, `HaulParentActions`, `HaulMenuItem`, `HaulController`,
-  `HaulTheme`, `HaulStrings`. Rows and menus are its own.
+  `HaulMenuItem`, `HaulController`, `HaulTheme`, `HaulStrings`. Rows and
+  menus are its own.
+- `HaulDownloadList` opens a parent in place: its row shows the children
+  below it, with `sectionOf`, `sort` and `sectionBuilder` for headings and
+  order, and `parentMenuItems` for its menu (pause all, resume all, delete
+  all). Gone: `HaulParentView`, `HaulParentActions`, `onOpenParent` and
+  `parentBuilder`.
 - `HaulOutputSink(folder:)`: the folder the app gives, as a path; null, the
   platform's default (MediaStore on Android, Downloads on desktop, Documents
   on iOS). Replaces `destination:`/`HaulDestination`/`HaulFolder` and

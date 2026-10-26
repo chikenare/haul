@@ -4,80 +4,148 @@ import 'package:haul/src/engine/parents.dart';
 import 'package:haul/src/widgets/download_widgets.dart';
 import 'package:haul/src/widgets/haul_controller.dart';
 
-/// Every download, a parent as one row with its children inside, newest
-/// first. Rebuilt only when a download comes, goes or moves; each row
-/// follows its own progress.
-class HaulDownloadList extends StatelessWidget {
+/// Every download, newest first: a loose one as its own row, and a parent
+/// (a show) as one row that opens right there into its children. Rebuilt
+/// only when a download comes, goes or moves; each row follows its own
+/// progress.
+///
+/// The children's headings and order are the app's, read from what it
+/// keeps in each (`metadata`): [sectionOf] gives the heading a child goes
+/// under (`Season 1`; null: none), and [sort] their order — by title in
+/// natural order otherwise. A heading is drawn where it changes, so sort by
+/// it first.
+class HaulDownloadList extends StatefulWidget {
   const HaulDownloadList({
     super.key,
     required this.controller,
     this.onPlay,
-    this.onOpenParent,
+    this.menuItems,
+    this.parentMenuItems,
+    this.sectionOf,
+    this.sort,
     this.itemBuilder,
-    this.parentBuilder,
+    this.sectionBuilder,
     this.empty,
     this.padding,
-    this.menuItems,
   });
 
   final HaulController controller;
 
   final void Function(DownloadRecord record)? onPlay;
 
-  /// The app's own entries in each default row's menu (see
-  /// `HaulActionsMenu`).
+  /// The app's own entries in each download's menu, after haul's actions
+  /// and before the ones that remove.
   final HaulMenuItems<DownloadRecord>? menuItems;
 
-  /// What tapping a parent does: usually a screen with [HaulParentView].
-  final void Function(ParentDownloads parent)? onOpenParent;
+  /// The same in a parent's menu (pause all, resume all, delete all).
+  final HaulMenuItems<DownloadParent>? parentMenuItems;
 
-  /// Replaces the row of a loose download (by default [HaulDownloadTile]).
+  final String? Function(DownloadRecord record)? sectionOf;
+  final Comparator<DownloadRecord>? sort;
+
+  /// Replaces the row of a download, loose or a child.
   final Widget Function(BuildContext context, String id)? itemBuilder;
 
-  /// Replaces the row of a parent (by default [HaulParentTile]).
-  final Widget Function(BuildContext context, ParentDownloads parent)?
-  parentBuilder;
+  /// Replaces a heading among a parent's children; by default a line of
+  /// text.
+  final Widget Function(BuildContext context, String section)? sectionBuilder;
 
   /// Shown when there is nothing; by default a line of text.
   final Widget? empty;
   final EdgeInsets? padding;
 
   @override
+  State<HaulDownloadList> createState() => _HaulDownloadListState();
+}
+
+class _HaulDownloadListState extends State<HaulDownloadList> {
+  /// The parents open now, by id.
+  final _open = <String>{};
+
+  HaulController get _controller => widget.controller;
+
+  Widget _item(BuildContext context, String id) =>
+      widget.itemBuilder?.call(context, id) ??
+      HaulDownloadTile(
+        key: ValueKey(id),
+        controller: _controller,
+        id: id,
+        onPlay: widget.onPlay,
+        menuItems: widget.menuItems,
+      );
+
+  /// A parent's children as rows, under their headings.
+  List<Widget> _children(BuildContext context, ParentDownloads parent) {
+    final engine = _controller.engine;
+    final children = parent.ids.map(engine.byId).nonNulls.toList();
+    if (widget.sort case final sort?) children.sort(sort);
+    final rows = <Widget>[];
+    String? current;
+    for (final (i, child) in children.indexed) {
+      final section = widget.sectionOf?.call(child);
+      if (section != null && (i == 0 || section != current)) {
+        rows.add(
+          widget.sectionBuilder?.call(context, section) ??
+              Padding(
+                key: ValueKey('section:${parent.parent.id}:$section'),
+                padding: const EdgeInsets.fromLTRB(32, 12, 16, 4),
+                child: Text(
+                  section,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+        );
+      }
+      current = section;
+      rows.add(
+        Padding(
+          key: ValueKey('child:${child.id}'),
+          padding: const EdgeInsets.only(left: 16),
+          child: _item(context, child.id),
+        ),
+      );
+    }
+    return rows;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final engine = controller.engine;
+    final engine = _controller.engine;
     return HaulEngineBuilder<List<DownloadEntry>>(
       identity: engine,
       stream: engine.watchEntries,
       current: () => engine.entries,
       builder: (context, entries) {
         if (entries.isEmpty) {
-          return empty ??
-              Center(child: Text(controller.stringsOf(context).empty));
+          return widget.empty ??
+              Center(child: Text(_controller.stringsOf(context).empty));
         }
+        final rows = <Widget>[
+          for (final entry in entries)
+            ...switch (entry) {
+              SingleDownload(:final id) => [_item(context, id)],
+              final ParentDownloads parent => [
+                HaulParentTile(
+                  key: ValueKey('parent:${parent.parent.id}'),
+                  controller: _controller,
+                  parent: parent,
+                  open: _open.contains(parent.parent.id),
+                  menuItems: widget.parentMenuItems,
+                  onTap: () => setState(() {
+                    if (!_open.remove(parent.parent.id)) {
+                      _open.add(parent.parent.id);
+                    }
+                  }),
+                ),
+                if (_open.contains(parent.parent.id))
+                  ..._children(context, parent),
+              ],
+            },
+        ];
         return ListView.builder(
-          padding: padding,
-          itemCount: entries.length,
-          itemBuilder: (context, i) => switch (entries[i]) {
-            SingleDownload(:final id) =>
-              itemBuilder?.call(context, id) ??
-                  HaulDownloadTile(
-                    key: ValueKey(id),
-                    controller: controller,
-                    id: id,
-                    onPlay: onPlay,
-                    menuItems: menuItems,
-                  ),
-            final ParentDownloads parent =>
-              parentBuilder?.call(context, parent) ??
-                  HaulParentTile(
-                    key: ValueKey('parent:${parent.parent.id}'),
-                    controller: controller,
-                    parent: parent,
-                    onTap: onOpenParent == null
-                        ? null
-                        : () => onOpenParent!(parent),
-                  ),
-          },
+          padding: widget.padding,
+          itemCount: rows.length,
+          itemBuilder: (context, i) => rows[i],
         );
       },
     );
@@ -140,18 +208,22 @@ class HaulParentProgressBuilder extends StatelessWidget {
 }
 
 /// A parent's row: its picture, its title, how many children it holds and
-/// how far along they are.
+/// how far along they are, its menu, and whether it is [open].
 class HaulParentTile extends StatelessWidget {
   const HaulParentTile({
     super.key,
     required this.controller,
     required this.parent,
+    this.open = false,
+    this.menuItems,
     this.onTap,
   });
 
   final HaulController controller;
 
   final ParentDownloads parent;
+  final bool open;
+  final HaulMenuItems<DownloadParent>? menuItems;
   final VoidCallback? onTap;
 
   @override
@@ -217,7 +289,12 @@ class HaulParentTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right),
+                _ParentMenu(
+                  controller: controller,
+                  parent: parent.parent,
+                  menuItems: menuItems,
+                ),
+                Icon(open ? Icons.expand_less : Icons.expand_more),
               ],
             ),
           ),
@@ -227,100 +304,10 @@ class HaulParentTile extends StatelessWidget {
   }
 }
 
-/// The children of one parent. Headings and order are the app's, read
-/// from what it keeps in each child (`metadata`): [sectionOf] gives the
-/// heading a child goes under (`Season 1`; null: none), and [sort] their
-/// order — by title in natural order otherwise. A heading is drawn where
-/// it changes, so sort by it first. [onEmpty] runs once the parent has no
-/// children left (pop the screen).
-class HaulParentView extends StatelessWidget {
-  const HaulParentView({
-    super.key,
-    required this.controller,
-    required this.parentId,
-    this.onPlay,
-    this.sectionOf,
-    this.sort,
-    this.itemBuilder,
-    this.sectionBuilder,
-    this.onEmpty,
-    this.padding,
-    this.menuItems,
-  });
-
-  final HaulController controller;
-
-  final String parentId;
-  final void Function(DownloadRecord record)? onPlay;
-
-  /// The app's own entries in each default row's menu (see
-  /// `HaulActionsMenu`).
-  final HaulMenuItems<DownloadRecord>? menuItems;
-  final String? Function(DownloadRecord record)? sectionOf;
-  final Comparator<DownloadRecord>? sort;
-  final Widget Function(BuildContext context, String id)? itemBuilder;
-
-  /// Replaces a heading; by default a line of text.
-  final Widget Function(BuildContext context, String section)? sectionBuilder;
-  final VoidCallback? onEmpty;
-  final EdgeInsets? padding;
-
-  @override
-  Widget build(BuildContext context) {
-    final engine = controller.engine;
-    final strings = controller.stringsOf(context);
-    return HaulEngineBuilder<ParentDownloads?>(
-      identity: (engine, parentId),
-      stream: () => engine.watchParent(parentId),
-      current: () => engine.parent(parentId),
-      builder: (context, parent) {
-        if (parent == null) {
-          return _EmptyOnce(
-            onEmpty: onEmpty,
-            child: Center(child: Text(strings.empty)),
-          );
-        }
-        final children = parent.ids.map(engine.byId).nonNulls.toList();
-        if (sort case final sort?) children.sort(sort);
-        final rows = <Widget>[];
-        String? current;
-        for (final (i, child) in children.indexed) {
-          final section = sectionOf?.call(child);
-          if (section != null && (i == 0 || section != current)) {
-            rows.add(
-              sectionBuilder?.call(context, section) ??
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                    child: Text(
-                      section,
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                  ),
-            );
-          }
-          current = section;
-          rows.add(
-            itemBuilder?.call(context, child.id) ??
-                HaulDownloadTile(
-                  key: ValueKey(child.id),
-                  controller: controller,
-                  id: child.id,
-                  onPlay: onPlay,
-                  menuItems: menuItems,
-                ),
-          );
-        }
-        return ListView(padding: padding, children: rows);
-      },
-    );
-  }
-}
-
-/// A parent's own actions, for an app bar: pause all, resume all, the
-/// app's [menuItems], delete all (asked first).
-class HaulParentActions extends StatelessWidget {
-  const HaulParentActions({
-    super.key,
+/// A parent's own actions: pause all, resume all, the app's [menuItems],
+/// delete all (asked first).
+class _ParentMenu extends StatelessWidget {
+  const _ParentMenu({
     required this.controller,
     required this.parent,
     this.menuItems,
@@ -386,28 +373,3 @@ class HaulParentActions extends StatelessWidget {
 }
 
 enum _ParentAction { pause, resume, delete }
-
-/// [child], running [onEmpty] once after it first shows — not on every
-/// rebuild while it stays: a second `pop` would close the screen below.
-class _EmptyOnce extends StatefulWidget {
-  const _EmptyOnce({required this.onEmpty, required this.child});
-
-  final VoidCallback? onEmpty;
-  final Widget child;
-
-  @override
-  State<_EmptyOnce> createState() => _EmptyOnceState();
-}
-
-class _EmptyOnceState extends State<_EmptyOnce> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.onEmpty?.call();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
-}
