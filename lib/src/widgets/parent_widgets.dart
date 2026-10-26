@@ -116,6 +116,11 @@ class _HaulDownloadListState extends State<HaulDownloadList> {
       stream: engine.watchEntries,
       current: () => engine.entries,
       builder: (context, entries) {
+        // A parent that is gone forgets it was open, so it comes back
+        // closed. No setState: this is already a build.
+        _open.retainWhere(
+          (id) => entries.any((e) => e is ParentDownloads && e.parent.id == id),
+        );
         if (entries.isEmpty) {
           return widget.empty ??
               Center(child: Text(_controller.stringsOf(context).empty));

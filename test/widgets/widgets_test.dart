@@ -98,6 +98,26 @@ void main() {
       expect(find.text('e1'), findsNothing);
     });
 
+    testWidgets('a parent deleted while open comes back closed', (
+      tester,
+    ) async {
+      await enqueue(tester, [_request('e1', parent: _loki)]);
+      await tester.pumpWidget(app(HaulDownloadList(controller: haul())));
+      await tester.pump();
+      await tester.tap(find.text('Loki'));
+      await tester.pump();
+      expect(find.text('e1'), findsOneWidget);
+
+      await tester.runAsync(() => engine.deleteParent('loki'));
+      await tester.pump();
+      expect(find.text('Loki'), findsNothing);
+
+      await enqueue(tester, [_request('e2', parent: _loki)]);
+      await tester.pump();
+      expect(find.text('Loki'), findsOneWidget);
+      expect(find.text('e2'), findsNothing);
+    });
+
     testWidgets('empty says so, in the app strings', (tester) async {
       await tester.runAsync(engine.init);
       await tester.pumpWidget(
