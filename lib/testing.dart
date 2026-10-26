@@ -174,6 +174,15 @@ class FakeTransferClient extends TransferClient {
   }
 
   @override
+  void unlisten() {
+    _onStatus = null;
+    _onProgress = null;
+  }
+
+  /// Whether an engine is registered for updates.
+  bool get isListening => _onStatus != null;
+
+  @override
   Future<void> start() async {}
 
   @override

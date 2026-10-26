@@ -21,6 +21,10 @@ abstract class TransferClient {
     required void Function(TaskProgressUpdate update) onProgress,
   });
 
+  /// Stops what [listen] registered, when it is still the one registered;
+  /// the engine calls it on dispose so the plugin lets go of it.
+  void unlisten() {}
+
   Future<void> start();
 
   /// One result per task; a `false` is a task the plugin refused, which
@@ -78,18 +82,43 @@ class PluginTransferClient extends TransferClient {
     );
   }
 
+  static const _groups = [pieceGroup, fileGroup];
+
+  void Function(TaskStatusUpdate update)? _onStatus;
+  void Function(TaskProgressUpdate update)? _onProgress;
+
+  /// In a namespace the plugin chains a new callback after the one already
+  /// there instead of replacing it: what an earlier engine — or an earlier
+  /// init of this one — registered goes first, or it would keep getting
+  /// every update and never be freed. The namespace is haul's alone.
   @override
   void listen({
     required void Function(TaskStatusUpdate update) onStatus,
     required void Function(TaskProgressUpdate update) onProgress,
   }) {
-    for (final group in const [pieceGroup, fileGroup]) {
-      _downloader.registerCallbacks(
-        group: group,
-        taskStatusCallback: onStatus,
-        taskProgressCallback: onProgress,
-      );
+    _onStatus = onStatus;
+    _onProgress = onProgress;
+    for (final group in _groups) {
+      _downloader
+        ..unregisterCallbacks(group: group)
+        ..registerCallbacks(
+          group: group,
+          taskStatusCallback: onStatus,
+          taskProgressCallback: onProgress,
+        );
     }
+  }
+
+  /// Only its own: a newer engine may have registered since.
+  @override
+  void unlisten() {
+    for (final group in _groups) {
+      for (final callback in [?_onStatus, ?_onProgress]) {
+        _downloader.unregisterCallbacks(group: group, callback: callback);
+      }
+    }
+    _onStatus = null;
+    _onProgress = null;
   }
 
   @override

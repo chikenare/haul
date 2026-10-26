@@ -191,6 +191,15 @@ void main() {
       expect(store.records[id], saved);
     },
   );
+
+  test('a disposed engine stops listening, so the plugin lets go of '
+      'it', () async {
+    final engine = await env.engine();
+    expect(env.transfer.isListening, isTrue);
+
+    await engine.dispose();
+    expect(env.transfer.isListening, isFalse);
+  });
 }
 
 /// The second time it is asked what the platform holds — the download's

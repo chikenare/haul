@@ -44,6 +44,10 @@
   which the app keeps however it keeps its state; `ensureHaulSetup`,
   `confirmHaulDelete`, `confirmHaulFormatFile`, `pickHaulFolder` and
   `haulDestinationChoosable` take it too.
+- The engine lets go of background_downloader on dispose
+  (`TransferClient.unlisten`), and a retried init no longer gets every
+  update twice: in a namespace the plugin chained each new callback after
+  the old ones.
 
 ## 0.1.0
 

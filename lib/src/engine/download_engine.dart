@@ -313,6 +313,7 @@ class DownloadEngine {
     }
     _platformPauses.clear();
     _wifiOnly?.removeListener(_onWifiOnlyChanged);
+    _transfer.unlisten();
     await _wifiChanges?.cancel();
     await _changes.close();
   }
