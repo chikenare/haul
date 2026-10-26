@@ -19,8 +19,8 @@ enum HaulAction {
 }
 
 /// The actions [record] allows, decided once for every widget — or for an
-/// app drawing its own. [primary] is the one a row's button does; [menu]
-/// all of them, in menu order.
+/// app drawing its own. [primary] is the one at hand, for an app that puts
+/// it on its own button; [menu] all of them, in menu order.
 @immutable
 class DownloadActions {
   const DownloadActions._(this.primary, this.menu);
@@ -99,42 +99,37 @@ Future<DownloadError?> runHaulAction(
   return null;
 }
 
-/// `Downloading · 42% · 1.2 GB / 3.0 GB`, or the final size once done.
+/// What a row says under its title: how much it has (`1.2 GB / 3.0 GB`),
+/// its size once done, why it failed, or the state while there are no bytes
+/// to show (queued or waiting for Wi-Fi, preparing, finishing). A paused one
+/// says so before its bytes, since nothing else on the row does.
 String downloadSummary(
   DownloadRecord record,
   HaulStrings strings, {
   bool waitingForWifi = false,
 }) {
-  final waiting = waitingForWifi && record.status == DownloadStatus.queued;
-  final parts = <String>[
-    if (waiting)
-      strings.waitingForWifi
-    else if (record.status == DownloadStatus.done &&
-        record.outputKind == OutputKind.package)
-      strings.inApp
-    else
-      strings.status(record.status),
-  ];
   final progress = record.progress;
-  switch (record.status) {
-    case DownloadStatus.done:
-      if (progress.totalBytes > 0) {
-        parts.add(strings.bytes(progress.totalBytes));
-      }
-    case DownloadStatus.failed:
-      break;
-    default:
-      if (progress.fraction case final fraction?) {
-        parts.add('${(fraction * 100).floor()}%');
-      }
-      if (progress.bytes > 0) {
-        parts.add(
-          progress.totalBytes > 0 && !progress.segmented
-              ? '${strings.bytes(progress.bytes)} / '
-                    '${strings.bytes(progress.totalBytes)}'
-              : strings.bytes(progress.bytes),
-        );
-      }
-  }
-  return parts.join(' · ');
+  final bytes = progress.bytes > 0
+      ? progress.totalBytes > 0 && !progress.segmented
+            ? '${strings.bytes(progress.bytes)} / '
+                  '${strings.bytes(progress.totalBytes)}'
+            : strings.bytes(progress.bytes)
+      : null;
+  return switch (record.status) {
+    DownloadStatus.failed => switch (record.error) {
+      final error? => strings.error(error),
+      null => strings.status(record.status),
+    },
+    DownloadStatus.queued when waitingForWifi => strings.waitingForWifi,
+    DownloadStatus.done =>
+      progress.totalBytes > 0 ? strings.bytes(progress.totalBytes) : '',
+    DownloadStatus.downloading => bytes ?? '',
+    DownloadStatus.paused => [
+      strings.status(record.status),
+      ?bytes,
+    ].join(' · '),
+    DownloadStatus.queued ||
+    DownloadStatus.resolving ||
+    DownloadStatus.assembling => strings.status(record.status),
+  };
 }

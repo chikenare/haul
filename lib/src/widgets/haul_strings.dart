@@ -30,7 +30,6 @@ class HaulStrings {
   String get waitingForWifi => 'Waiting for Wi-Fi';
 
   /// A finished package, which only the app plays.
-  String get inApp => 'In the app';
 
   String get pause => 'Pause';
   String get resume => 'Resume';
@@ -119,8 +118,6 @@ class HaulStringsEs extends HaulStrings {
   @override
   String get waitingForWifi => 'Esperando Wi-Fi';
   @override
-  String get inApp => 'En la app';
-
   @override
   String get pause => 'Pausar';
   @override

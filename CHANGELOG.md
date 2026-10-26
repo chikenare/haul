@@ -68,6 +68,14 @@
   order, and `parentMenuItems` for its menu (pause all, resume all, delete
   all). Gone: `HaulParentView`, `HaulParentActions`, `onOpenParent` and
   `parentBuilder`.
+- A download's row has no button of its own: pause, resume, retry and play
+  are in its menu (tapping a finished one still plays it). Under the title,
+  only what it has (`1.2 GB / 3.0 GB`, no percent), its size once done, why
+  it failed, or the state while there are no bytes (queued, waiting for
+  Wi-Fi, preparing, finishing; paused before its bytes), and no bar while
+  queued or preparing. `HaulStrings.inApp` is gone.
+- A parent's menu offers pause all or resume all only when some child
+  allows it (a finished series has neither), and acts on just those.
 - `HaulOutputSink(folder:)`: the folder the app gives, as a path; null, the
   platform's default (MediaStore on Android, Downloads on desktop, Documents
   on iOS). Replaces `destination:`/`HaulDestination`/`HaulFolder` and

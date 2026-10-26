@@ -287,8 +287,9 @@ class HaulActionsMenu extends StatelessWidget {
   }
 }
 
-/// One row of the downloads list: picture, title, state and the main
-/// action at hand, with the rest in a menu. Every part can be replaced.
+/// One row of the downloads list: picture with its progress, title, a line
+/// when there is something to say, and the actions in a menu. Every part
+/// can be replaced.
 class HaulDownloadTile extends StatelessWidget {
   const HaulDownloadTile({
     super.key,
@@ -331,10 +332,6 @@ class HaulDownloadTile extends StatelessWidget {
       builder: (context, record) {
         if (record == null) return const SizedBox.shrink();
         final theme = HaulTheme.of(context);
-        final actions = DownloadActions.of(
-          record,
-          canRetry: controller.canRetry,
-        );
         return InkWell(
           onTap: () {
             if (onTap case final onTap?) return onTap(record);
@@ -358,19 +355,15 @@ class HaulDownloadTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.titleSmall,
                           ),
-                      const SizedBox(height: 4),
-                      subtitle?.call(context, record) ??
-                          _Summary(controller: controller, record: record),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 4),
+                        subtitle!(context, record),
+                      ] else
+                        _Summary(controller: controller, record: record),
                     ],
                   ),
                 ),
-                trailing?.call(context, record) ??
-                    _PrimaryButton(
-                      controller: controller,
-                      record: record,
-                      actions: actions,
-                      onPlay: onPlay,
-                    ),
+                ?trailing?.call(context, record),
                 if (showMenu)
                   HaulActionsMenu(
                     controller: controller,
@@ -404,7 +397,13 @@ class _ProgressThumbnail extends StatelessWidget {
           imageUrl:
               controller.engine.imageOf(record) ?? record.parent?.imageUrl,
         ),
-        if (record.status != DownloadStatus.done)
+        // Not while it waits its turn or reads its source: the text says
+        // so, and an endless bar there is only noise.
+        if (record.status
+            case DownloadStatus.downloading ||
+                DownloadStatus.paused ||
+                DownloadStatus.assembling ||
+                DownloadStatus.failed)
           Positioned(
             left: 0,
             right: 0,
@@ -447,61 +446,19 @@ class _Summary extends StatelessWidget {
       identity: controller.engine,
       stream: controller.engine.watchWaitingForWifi,
       current: () => controller.engine.waitingForWifi,
-      builder: (context, waiting) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            downloadSummary(record, strings, waitingForWifi: waiting),
-            maxLines: 1,
+      builder: (context, waiting) {
+        final text = downloadSummary(record, strings, waitingForWifi: waiting);
+        if (text.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            text,
+            maxLines: failed ? 2 : 1,
             overflow: TextOverflow.ellipsis,
             style: style,
           ),
-          if (failed && record.error != null)
-            Text(
-              strings.error(record.error!),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: style,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({
-    required this.controller,
-    required this.record,
-    required this.actions,
-    required this.onPlay,
-  });
-
-  final HaulController controller;
-
-  final DownloadRecord record;
-  final DownloadActions actions;
-  final void Function(DownloadRecord record)? onPlay;
-
-  @override
-  Widget build(BuildContext context) {
-    final action = actions.primary;
-    if (action == null) {
-      return record.status == DownloadStatus.assembling
-          ? const Padding(
-              padding: EdgeInsets.all(12),
-              child: SizedBox.square(
-                dimension: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          : const SizedBox.shrink();
-    }
-    final engine = controller.engine;
-    return IconButton(
-      tooltip: _label(controller.stringsOf(context), action),
-      icon: Icon(_icon(action)),
-      onPressed: () => runHaulAction(engine, record, action, play: onPlay),
+        );
+      },
     );
   }
 }

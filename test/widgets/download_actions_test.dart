@@ -114,21 +114,38 @@ void main() {
   group('downloadSummary', () {
     const en = HaulStrings();
 
-    test('status, percent and bytes while downloading', () {
-      final summary = downloadSummary(
-        _record(
-          DownloadStatus.downloading,
-          progress: const DownloadProgress(
-            bytes: 1200000000,
-            totalBytes: 3000000000,
-          ),
+    const half = DownloadProgress(bytes: 1200000000, totalBytes: 3000000000);
+
+    test('only the bytes while it downloads, no state or percent', () {
+      expect(
+        downloadSummary(
+          _record(DownloadStatus.downloading, progress: half),
+          en,
         ),
-        en,
+        '1.2 GB / 3.0 GB',
       );
-      expect(summary, 'Downloading · 40% · 1.2 GB / 3.0 GB');
     });
 
-    test('waiting for Wi-Fi replaces queued', () {
+    test('a paused one says so before its bytes', () {
+      expect(
+        downloadSummary(_record(DownloadStatus.paused, progress: half), en),
+        'Paused · 1.2 GB / 3.0 GB',
+      );
+    });
+
+    test('the state while there are no bytes to show', () {
+      expect(
+        downloadSummary(_record(DownloadStatus.resolving), en),
+        'Preparing',
+      );
+      expect(
+        downloadSummary(_record(DownloadStatus.assembling, progress: half), en),
+        'Finishing',
+      );
+    });
+
+    test('queued, or waiting for Wi-Fi', () {
+      expect(downloadSummary(_record(DownloadStatus.queued), en), 'Queued');
       expect(
         downloadSummary(
           _record(DownloadStatus.queued),
@@ -139,7 +156,20 @@ void main() {
       );
     });
 
-    test('a finished package says it is in the app', () {
+    test('a failed one says why', () {
+      expect(
+        downloadSummary(
+          _record(
+            DownloadStatus.failed,
+            error: const DownloadError(code: 'quota'),
+          ),
+          const _AppStrings(),
+        ),
+        'Sin cupo',
+      );
+    });
+
+    test('a finished one, only its size', () {
       expect(
         downloadSummary(
           _record(
@@ -149,7 +179,7 @@ void main() {
           ),
           en,
         ),
-        'In the app · 500 MB',
+        '500 MB',
       );
     });
   });

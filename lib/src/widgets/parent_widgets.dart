@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:haul/src/engine/model.dart';
 import 'package:haul/src/engine/parents.dart';
+import 'package:haul/src/widgets/download_actions.dart';
 import 'package:haul/src/widgets/download_widgets.dart';
 import 'package:haul/src/widgets/haul_controller.dart';
 
@@ -323,6 +324,17 @@ class _ParentMenu extends StatelessWidget {
   final DownloadParent parent;
   final HaulMenuItems<DownloadParent>? menuItems;
 
+  /// What a download's own menu would offer: pause, or resume and retry.
+  HaulAction? _primary(DownloadRecord record) =>
+      DownloadActions.of(record, canRetry: controller.canRetry).primary;
+
+  bool _pausable(DownloadRecord record) => _primary(record) == HaulAction.pause;
+
+  bool _resumable(DownloadRecord record) => switch (_primary(record)) {
+    HaulAction.resume || HaulAction.retry => true,
+    _ => false,
+  };
+
   @override
   Widget build(BuildContext context) {
     final engine = controller.engine;
@@ -333,9 +345,9 @@ class _ParentMenu extends StatelessWidget {
           case HaulMenuItem(:final onSelected):
             await onSelected(context);
           case _ParentAction.pause:
-            await engine.pauseParent(parent.id);
+            await engine.pauseParent(parent.id, where: _pausable);
           case _ParentAction.resume:
-            await engine.resumeParent(parent.id);
+            await engine.resumeParent(parent.id, where: _resumable);
           case _ParentAction.delete:
             final count = engine.childrenOf(parent.id).length;
             final yes = await showDialog<bool>(
@@ -358,14 +370,17 @@ class _ParentMenu extends StatelessWidget {
         }
       },
       itemBuilder: (menuContext) => [
-        PopupMenuItem(
-          value: _ParentAction.pause,
-          child: Text(strings.pauseAll),
-        ),
-        PopupMenuItem(
-          value: _ParentAction.resume,
-          child: Text(strings.resumeAll),
-        ),
+        // Only what some child allows: a finished series offers neither.
+        if (engine.childrenOf(parent.id).any(_pausable))
+          PopupMenuItem(
+            value: _ParentAction.pause,
+            child: Text(strings.pauseAll),
+          ),
+        if (engine.childrenOf(parent.id).any(_resumable))
+          PopupMenuItem(
+            value: _ParentAction.resume,
+            child: Text(strings.resumeAll),
+          ),
         for (final item in menuItems?.call(context, parent) ?? const [])
           PopupMenuItem(value: item, child: Text(item.label)),
         PopupMenuItem(

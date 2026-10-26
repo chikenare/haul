@@ -200,20 +200,25 @@ void main() {
     );
   });
 
-  testWidgets('the tile pauses with its primary button', (tester) async {
+  testWidgets('the tile has no button of its own, only the menu', (
+    tester,
+  ) async {
     await enqueue(tester, [_request('film')]);
     await tester.pumpWidget(
       app(HaulDownloadTile(controller: haul(), id: engine.records.single.id)),
     );
     await tester.pump();
 
-    await tester.tap(find.byTooltip(const HaulStrings().pause));
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
-    await tester.pump();
-    expect(engine.records.single.status, DownloadStatus.paused);
-    expect(find.byTooltip(const HaulStrings().resume), findsOneWidget);
+    const strings = HaulStrings();
+    for (final label in [
+      strings.pause,
+      strings.resume,
+      strings.retry,
+      strings.play,
+    ]) {
+      expect(find.byTooltip(label), findsNothing);
+    }
+    expect(find.byType(HaulActionsMenu), findsOneWidget);
   });
 
   group('menuItems', () {
@@ -284,9 +289,29 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text(const HaulStrings().pauseAll), findsOneWidget);
+      expect(find.text(const HaulStrings().resumeAll), findsNothing);
       await tester.tap(find.text('Share Loki'));
       await tester.pumpAndSettle();
       expect(shared, isTrue);
+    });
+
+    testWidgets('a parent menu offers only what its children allow', (
+      tester,
+    ) async {
+      await enqueue(tester, [_request('e1', parent: _loki)]);
+      await tester.runAsync(() => engine.pauseParent('loki'));
+      await tester.pumpWidget(app(HaulDownloadList(controller: haul())));
+      await tester.pump();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(HaulParentTile),
+          matching: find.byType(PopupMenuButton<Object>),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(const HaulStrings().pauseAll), findsNothing);
+      expect(find.text(const HaulStrings().resumeAll), findsOneWidget);
+      expect(find.text(const HaulStrings().deleteAll), findsOneWidget);
     });
   });
 }
