@@ -109,15 +109,13 @@ class HaulStrings {
   String get formatFileConfirmAction => 'Turn on';
   String freeSpace(String bytes) => 'Free: $bytes';
   String get destination => 'Where files go';
-  String get destinationPublic => 'Downloads';
-  String get destinationPublicHint => 'In the Downloads folder of the device.';
+
+  /// Where files go until the user picks a folder: no permission needed.
+  String get destinationDefault => 'Default folder';
   String get destinationApp => 'Only in the app';
-  String get destinationAppHint => 'Nothing else sees them.';
-  String get destinationFolder => 'A folder of my choice';
-  String get destinationFolderHint => 'Pick it now.';
   String get destinationFolderLost =>
       'That folder can no longer be written to. Pick it again.';
-  String get changeFolder => 'Change';
+  String get useDefaultFolder => 'Use the default folder';
   String get wifiOnly => 'Only on Wi-Fi';
   String get wifiOnlyHint => 'Nothing is downloaded on mobile data.';
   String get battery => 'Download in the background';
@@ -258,23 +256,14 @@ class HaulStringsEs extends HaulStrings {
   @override
   String get destination => 'Dónde se guardan';
   @override
-  String get destinationPublic => 'Descargas';
-  @override
-  String get destinationPublicHint =>
-      'En la carpeta Descargas del dispositivo.';
+  String get destinationDefault => 'Carpeta por defecto';
   @override
   String get destinationApp => 'Solo en la app';
-  @override
-  String get destinationAppHint => 'Nadie más los ve.';
-  @override
-  String get destinationFolder => 'Una carpeta que elija';
-  @override
-  String get destinationFolderHint => 'Elígela ahora.';
   @override
   String get destinationFolderLost =>
       'Ya no se puede escribir en esa carpeta. Elígela de nuevo.';
   @override
-  String get changeFolder => 'Cambiar';
+  String get useDefaultFolder => 'Usar la carpeta por defecto';
   @override
   String get wifiOnly => 'Solo con Wi-Fi';
   @override

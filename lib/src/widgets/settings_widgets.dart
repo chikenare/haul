@@ -12,10 +12,11 @@ bool get _desktop => switch (defaultTargetPlatform) {
   _ => false,
 };
 
-/// Whether the destination can be chosen here: Android, and desktop. iOS
-/// keeps files in the app.
+/// Whether another folder can be picked here: Android, and desktop with
+/// the app's `HaulController.pickDirectory`. iOS keeps files in the app.
 bool haulDestinationChoosable(HaulController controller) =>
-    controller.android.isAndroid || _desktop;
+    controller.android.isAndroid ||
+    (_desktop && controller.pickDirectory != null);
 
 /// Asks the platform for a folder: SAF on Android, the app's
 /// `HaulController.pickDirectory` on desktop. Null when the user backs out or
@@ -100,80 +101,6 @@ class HaulFormatChoice extends StatelessWidget {
   }
 }
 
-/// The choice of destination as radio rows: public, only in the app, or a
-/// folder of the user's — which is picked when chosen, and kept as it was
-/// when the user backs out of the picker.
-class HaulDestinationChoice extends StatelessWidget {
-  const HaulDestinationChoice({
-    super.key,
-    required this.controller,
-    required this.destination,
-    required this.onChanged,
-  });
-
-  final HaulController controller;
-  final HaulDestination destination;
-  final ValueChanged<HaulDestination> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = controller.stringsOf(context);
-    final canPick =
-        controller.android.isAndroid || controller.pickDirectory != null;
-    final folder = switch (destination) {
-      FolderDestination(:final folder) => folder,
-      _ => null,
-    };
-
-    Future<void> pick() async {
-      final picked = await pickHaulFolder(controller, current: destination);
-      if (picked != null) onChanged(HaulDestination.folder(picked));
-    }
-
-    return RadioGroup<String>(
-      groupValue: destination.toJson()['type']! as String,
-      onChanged: (type) async {
-        switch (type) {
-          case 'public':
-            onChanged(const HaulDestination.public());
-          case 'app':
-            onChanged(const HaulDestination.app());
-          case 'folder':
-            await pick();
-        }
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          RadioListTile<String>(
-            value: 'public',
-            title: Text(strings.destinationPublic),
-            subtitle: Text(strings.destinationPublicHint),
-          ),
-          RadioListTile<String>(
-            value: 'app',
-            title: Text(strings.destinationApp),
-            subtitle: Text(strings.destinationAppHint),
-          ),
-          if (canPick)
-            RadioListTile<String>(
-              value: 'folder',
-              title: Text(strings.destinationFolder),
-              subtitle: Text(folder?.name ?? strings.destinationFolderHint),
-              secondary: folder == null
-                  ? null
-                  : TextButton(
-                      onPressed: pick,
-                      child: Text(strings.changeFolder),
-                    ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Settings row: one file or the app's package. With [confirm], turning
 /// one file on asks first (see [confirmHaulFormatFile]).
 class HaulFormatTile extends StatelessWidget {
   const HaulFormatTile({
@@ -250,8 +177,11 @@ Future<bool> confirmHaulFormatFile(
   return yes ?? false;
 }
 
-/// Settings row: where files go, opening the choice in a dialog. Says so
-/// when a picked folder can no longer be written to. Nothing on iOS.
+/// Settings row: where files go — the default folder, which needs no
+/// permission, until the user taps it to pick another (the picker is what
+/// grants writing there), with a way back to the default. Says so when a
+/// picked folder can no longer be written to. Nothing where no folder can
+/// be picked (iOS, desktop without `HaulController.pickDirectory`).
 class HaulDestinationTile extends StatefulWidget {
   const HaulDestinationTile({super.key, required this.controller});
 
@@ -292,8 +222,12 @@ class _HaulDestinationTileState extends State<HaulDestinationTile> {
       builder: (context, edit, settings) {
         final destination = settings.destination;
         _check(destination);
+        final folder = switch (destination) {
+          FolderDestination(:final folder) => folder,
+          _ => null,
+        };
         final label = switch (destination) {
-          PublicDestination() => strings.destinationPublic,
+          PublicDestination() => strings.destinationDefault,
           AppDestination() => strings.destinationApp,
           FolderDestination(:final folder) => folder.name,
         };
@@ -305,22 +239,33 @@ class _HaulDestinationTileState extends State<HaulDestinationTile> {
                 ? TextStyle(color: HaulTheme.of(context).errorOf(context))
                 : null,
           ),
-          onTap: () => showDialog<void>(
-            context: context,
-            builder: (dialog) => AlertDialog(
-              title: Text(strings.destination),
-              contentPadding: const EdgeInsets.symmetric(vertical: 16),
-              content: HaulDestinationChoice(
-                controller: controller,
-                destination: destination,
-                onChanged: (d) {
-                  _checked = null;
-                  edit.update((s) => s.copyWith(destination: d));
-                  Navigator.pop(dialog);
-                },
-              ),
-            ),
-          ),
+          // A tap means another folder: the picker straight away, which is
+          // also what grants writing there. Backing out keeps what was.
+          onTap: () async {
+            final picked = await pickHaulFolder(
+              controller,
+              current: destination,
+            );
+            if (picked == null) return;
+            _checked = null;
+            edit.update(
+              (s) => s.copyWith(destination: HaulDestination.folder(picked)),
+            );
+          },
+          trailing: folder == null
+              ? null
+              : IconButton(
+                  tooltip: strings.useDefaultFolder,
+                  icon: const Icon(Icons.settings_backup_restore),
+                  onPressed: () {
+                    _checked = null;
+                    edit.update(
+                      (s) => s.copyWith(
+                        destination: const HaulDestination.public(),
+                      ),
+                    );
+                  },
+                ),
         );
       },
     );
@@ -440,9 +385,10 @@ class HaulBatteryTile extends StatelessWidget {
   }
 }
 
-/// Before the first download: asks once for the format, where a file goes
-/// and — on Android — to let downloads run with the battery saver on, and
-/// remembers it was asked. Answers whether to go on: true straight away
+/// Before the first download: asks once for the format and — on Android —
+/// to let downloads run with the battery saver on, and remembers it was
+/// asked. Where files go is not asked: the default folder until the user
+/// picks another in the settings ([HaulDestinationTile]). Answers whether to go on: true straight away
 /// once it was accepted, false when the user backs out. Needs
 /// [HaulController.settings].
 Future<bool> ensureHaulSetup(
@@ -487,7 +433,6 @@ class _HaulSetupSheetState extends State<HaulSetupSheet> {
     controller.requireSettings.update(
       (s) => s.copyWith(
         merge: _draft.merge,
-        destination: _draft.destination,
         wifiOnly: widget.showWifiOnly ? _draft.wifiOnly : null,
         setupDone: true,
       ),
@@ -535,17 +480,6 @@ class _HaulSetupSheetState extends State<HaulSetupSheet> {
               onChanged: (merge) =>
                   setState(() => _draft = _draft.copyWith(merge: merge)),
             ),
-            // Where a file goes only matters for a file: a package always
-            // stays in the app.
-            if (_draft.merge && haulDestinationChoosable(controller)) ...[
-              heading(strings.destination),
-              HaulDestinationChoice(
-                controller: controller,
-                destination: _draft.destination,
-                onChanged: (d) =>
-                    setState(() => _draft = _draft.copyWith(destination: d)),
-              ),
-            ],
             if (widget.showWifiOnly)
               SwitchListTile(
                 title: Text(strings.wifiOnly),

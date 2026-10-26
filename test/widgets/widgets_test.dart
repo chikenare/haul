@@ -438,11 +438,9 @@ void main() {
       expect(find.byType(HaulSetupSheet), findsOneWidget);
 
       await tapText(tester, const HaulStrings().formatFile);
-      await tapText(tester, const HaulStrings().destinationApp);
       await tapText(tester, const HaulStrings().download);
 
       expect(settings.value.merge, isTrue);
-      expect(settings.value.destination, const HaulDestination.app());
       expect(settings.value.setupDone, isTrue);
       expect(stored.last, settings.value);
     });
@@ -464,23 +462,10 @@ void main() {
       expect(stored, isEmpty);
     });
 
-    testWidgets('a picked folder becomes the destination', (tester) async {
-      android.picked = const HaulFolder(
-        uri: 'content://tree/x',
-        name: 'Movies',
-      );
+    testWidgets('where files go is not asked', (tester) async {
       await open(tester);
       await tapText(tester, const HaulStrings().formatFile);
-      await tapText(tester, const HaulStrings().destinationFolder);
-
-      expect(find.text('Movies'), findsOneWidget);
-      await tapText(tester, const HaulStrings().download);
-      expect(
-        settings.value.destination,
-        const HaulDestination.folder(
-          HaulFolder(uri: 'content://tree/x', name: 'Movies'),
-        ),
-      );
+      expect(find.text(const HaulStrings().destination), findsNothing);
     });
 
     testWidgets('the battery row asks the system', (tester) async {
@@ -502,5 +487,55 @@ void main() {
     android = FakeHaulAndroid(isAndroid: false);
     await tester.pumpWidget(app(HaulBatteryTile(controller: haul())));
     expect(find.byType(ListTile), findsNothing);
+  });
+
+  group('HaulDestinationTile', () {
+    const picked = HaulFolder(uri: 'content://tree/x', name: 'Movies');
+
+    testWidgets('says the default folder until another is picked', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(HaulDestinationTile(controller: haul())));
+      expect(find.text(const HaulStrings().destinationDefault), findsOneWidget);
+      expect(find.byType(IconButton), findsNothing);
+    });
+
+    testWidgets('a tap goes straight to the picker', (tester) async {
+      android.picked = picked;
+      await tester.pumpWidget(app(HaulDestinationTile(controller: haul())));
+      await tester.tap(find.byType(ListTile));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(settings.value.destination, const HaulDestination.folder(picked));
+      expect(find.text('Movies'), findsOneWidget);
+    });
+
+    testWidgets('backing out of the picker keeps what was', (tester) async {
+      android.picked = null;
+      await tester.pumpWidget(app(HaulDestinationTile(controller: haul())));
+      await tester.tap(find.byType(ListTile));
+      await tester.pumpAndSettle();
+
+      expect(settings.value.destination, const HaulDestination.public());
+      expect(stored, isEmpty);
+    });
+
+    testWidgets('a picked folder can go back to the default', (tester) async {
+      settings.value = const HaulSettings(
+        destination: HaulDestination.folder(picked),
+      );
+      await tester.pumpWidget(app(HaulDestinationTile(controller: haul())));
+      await tester.tap(find.byTooltip(const HaulStrings().useDefaultFolder));
+      await tester.pumpAndSettle();
+
+      expect(settings.value.destination, const HaulDestination.public());
+    });
+
+    testWidgets('nothing where no folder can be picked', (tester) async {
+      android = FakeHaulAndroid(isAndroid: false);
+      await tester.pumpWidget(app(HaulDestinationTile(controller: haul())));
+      expect(find.byType(ListTile), findsNothing);
+    });
   });
 }

@@ -48,6 +48,17 @@
   (`TransferClient.unlisten`), and a retried init no longer gets every
   update twice: in a namespace the plugin chained each new callback after
   the old ones.
+- Where files go is no longer a choice in a dialog: `HaulDestinationTile`
+  says the default folder and opens the picker straight away on a tap (SAF
+  on Android, which is what grants writing there), with a button back to
+  the default; `HaulSetupSheet` no longer asks it. `HaulDestinationChoice`
+  is gone, and so are the strings only it used (`destinationPublic*`,
+  `destinationAppHint`, `destinationFolder*`, `changeFolder`);
+  `destinationDefault` and `useDefaultFolder` are new.
+- `HaulOutputSink(publicRoot:)` is used on Android too: given, the default
+  destination is that folder (say path_provider's `getDownloadsDirectory`,
+  no permission needed), as plain files; null keeps the public Downloads
+  through MediaStore.
 
 ## 0.1.0
 

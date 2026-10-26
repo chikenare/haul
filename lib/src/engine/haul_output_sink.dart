@@ -103,11 +103,15 @@ typedef SharedStorageMover =
 /// The sink for a [HaulDestination], read when each file is published, so
 /// a change in the settings applies to what finishes next.
 ///
-/// On Android a picked folder cannot be written with plain file access:
-/// files go through SAF there, and through MediaStore to the public
-/// Downloads. When a picked folder can no longer be written (the grant was
-/// revoked, the card is out) the file goes public, and when that fails too,
-/// it stays in the app — a finished download is never lost to a setting.
+/// [HaulDestination.public] goes into the folder `publicRoot` answers,
+/// when the app gives one — say path_provider's `getDownloadsDirectory`,
+/// which needs no permission. Without it, the user's Downloads on desktop,
+/// the app's Documents on iOS, and on Android the public Downloads through
+/// MediaStore. A picked folder cannot be written with plain file access on
+/// Android: files go through SAF there. When a picked folder can no
+/// longer be written (the grant was revoked, the card is out) the file goes
+/// public, and when that fails too, it stays in the app — a finished
+/// download is never lost to a setting.
 class HaulOutputSink implements ReservingOutputSink {
   HaulOutputSink({
     required this.destination,
@@ -119,7 +123,7 @@ class HaulOutputSink implements ReservingOutputSink {
     TargetPlatform? platform,
   }) : _android = android,
        _moveToShared = moveToShared ?? _mediaStoreMove,
-       _publicRoot = publicRoot ?? _defaultPublicRoot,
+       _publicRoot = publicRoot,
        _platform = platform;
 
   final Future<HaulDestination> Function() destination;
@@ -128,12 +132,13 @@ class HaulOutputSink implements ReservingOutputSink {
   /// its root.
   final String subfolder;
 
-  /// Android's shared collection for [HaulDestination.public].
+  /// Android's shared collection for [HaulDestination.public] without a
+  /// `publicRoot`.
   final SharedStorage sharedStorage;
 
   final HaulAndroid _android;
   final SharedStorageMover _moveToShared;
-  final Future<String?> Function() _publicRoot;
+  final Future<String?> Function()? _publicRoot;
   final TargetPlatform? _platform;
 
   bool get _onAndroid =>
@@ -188,6 +193,11 @@ class HaulOutputSink implements ReservingOutputSink {
     String extension,
     DownloadRecord record,
   ) async {
+    if (_publicRoot != null) {
+      return _directorySink(
+        const HaulDestination.public(),
+      ).publish(staged, _nested(name), extension, record);
+    }
     // MediaStore names the entry after the file: it is renamed to what the
     // user should see first, beside the staged one.
     final named = File(
@@ -220,7 +230,7 @@ class HaulOutputSink implements ReservingOutputSink {
     () async => switch (where) {
       AppDestination() => null,
       FolderDestination(:final folder) => folder.uri,
-      PublicDestination() => await _publicRoot(),
+      PublicDestination() => await (_publicRoot ?? _defaultPublicRoot)(),
     },
   );
 
@@ -230,12 +240,13 @@ class HaulOutputSink implements ReservingOutputSink {
     String extension,
     DownloadRecord record,
   ) async {
+    final where = await destination();
     // Neither SAF nor MediaStore says where a file will go before it is
     // there.
-    if (_onAndroid) return null;
-    return _directorySink(
-      await destination(),
-    ).reserve(_nested(name), extension, record);
+    if (_onAndroid && (_publicRoot == null || where is! PublicDestination)) {
+      return null;
+    }
+    return _directorySink(where).reserve(_nested(name), extension, record);
   }
 
   @override

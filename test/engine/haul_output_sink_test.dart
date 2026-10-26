@@ -51,15 +51,20 @@ void main() {
     return file;
   }
 
+  /// [publicRoot]: the app's folder for public; by default given off
+  /// Android (in place of the user's Downloads) and not on it (MediaStore).
   HaulOutputSink sink(
     HaulDestination destination, {
     TargetPlatform platform = TargetPlatform.android,
+    bool? publicRoot,
   }) => HaulOutputSink(
     destination: () async => destination,
     subfolder: 'App/Videos',
     android: android,
     platform: platform,
-    publicRoot: () async => p.join(temp.path, 'Downloads'),
+    publicRoot: (publicRoot ?? platform != TargetPlatform.android)
+        ? () async => p.join(temp.path, 'Downloads')
+        : null,
     moveToShared: (file, storage, directory) async {
       moved.add((p.basename(file.path), storage, directory));
       return movedUri;
@@ -148,6 +153,57 @@ void main() {
       await s.remove('content://media/1');
       expect(android.deleted, ['content://media/1']);
       expect(await s.holds('content://media/1'), isFalse);
+    });
+  });
+
+  group('on Android with a publicRoot', () {
+    String expected() => p.join(
+      temp.path,
+      'Downloads',
+      'App',
+      'Videos',
+      'Loki',
+      'Season 01',
+      'Loki S01E01.mkv',
+    );
+
+    test('public: a plain file there, not MediaStore', () async {
+      final locator = await sink(
+        const HaulDestination.public(),
+        publicRoot: true,
+      ).publish(await staged(), _name, 'mkv', _record);
+
+      expect(locator, expected());
+      expect(await File(locator).readAsString(), 'movie');
+      expect(moved, isEmpty);
+    });
+
+    test('a folder that can no longer be written falls back there', () async {
+      android.revoked.add(_folder.uri);
+      final locator = await sink(
+        const HaulDestination.folder(_folder),
+        publicRoot: true,
+      ).publish(await staged(), _name, 'mkv', _record);
+
+      expect(locator, expected());
+      expect(moved, isEmpty);
+    });
+
+    test('public is known before the file is there', () async {
+      expect(
+        await sink(
+          const HaulDestination.public(),
+          publicRoot: true,
+        ).reserve(_name, 'mkv', _record),
+        isNotNull,
+      );
+      expect(
+        await sink(
+          const HaulDestination.folder(_folder),
+          publicRoot: true,
+        ).reserve(_name, 'mkv', _record),
+        isNull,
+      );
     });
   });
 
