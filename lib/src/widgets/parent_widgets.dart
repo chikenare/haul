@@ -276,7 +276,10 @@ class HaulParentTile extends StatelessWidget {
                           else
                             strings.doneOf(progress.done, progress.total),
                           if (progress.totalBytes > 0)
-                            strings.bytes(progress.totalBytes),
+                            progress.isDone || progress.bytes == 0
+                                ? strings.bytes(progress.totalBytes)
+                                : '${strings.bytes(progress.bytes)} / '
+                                      '${strings.bytes(progress.totalBytes)}',
                         ].join(' · '),
                         style: text.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,

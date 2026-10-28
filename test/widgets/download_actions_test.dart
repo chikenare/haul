@@ -126,6 +126,19 @@ void main() {
       );
     });
 
+    test('a fragmented one shows its projected total too', () {
+      expect(
+        downloadSummary(
+          _record(
+            DownloadStatus.downloading,
+            progress: half.copyWith(segmented: true),
+          ),
+          en,
+        ),
+        '1.2 GB / 3.0 GB',
+      );
+    });
+
     test('a paused one says so before its bytes', () {
       expect(
         downloadSummary(_record(DownloadStatus.paused, progress: half), en),

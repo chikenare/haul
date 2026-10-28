@@ -109,8 +109,10 @@ String downloadSummary(
   bool waitingForWifi = false,
 }) {
   final progress = record.progress;
+  // A fragmented source's total too: the engine projects it from the
+  // pieces already in, so it settles on the real size as it goes.
   final bytes = progress.bytes > 0
-      ? progress.totalBytes > 0 && !progress.segmented
+      ? progress.totalBytes > 0
             ? '${strings.bytes(progress.bytes)} / '
                   '${strings.bytes(progress.totalBytes)}'
             : strings.bytes(progress.bytes)
