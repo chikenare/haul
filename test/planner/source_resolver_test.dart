@@ -126,6 +126,15 @@ void main() {
     expect(plan.pieceCount, 4);
     expect(plan.isSegmented, isTrue);
     expect(plan.expectedBytes, 4000000 * 10 ~/ 8);
+
+    // The variant counts one audio: a second one chosen adds its own.
+    final both = await source.plan(selection);
+    expect(both.expectedBytes, (4000000 + 128000) * 10 ~/ 8);
+    expect(both.tracks.map((t) => t.estimatedBytes), [
+      (4000000 - 128000) * 10 ~/ 8,
+      128000 * 10 ~/ 8,
+      128000 * 10 ~/ 8,
+    ]);
     expect(plan.tracks.first.playlist, contains('\n0.ts\n'));
     expect(plan.tracks.first.pieces.first.url, '$base/v-0.ts');
   });

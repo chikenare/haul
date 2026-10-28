@@ -159,6 +159,11 @@ class DashSource extends ResolvedSource {
       forced: rep.forced,
       codecs: rep.codecs,
       sourceId: rep.id,
+      estimatedBytes: switch (rep.bandwidth) {
+        final bandwidth? when _duration > Duration.zero =>
+          bandwidth * _duration.inSeconds ~/ 8,
+        _ => null,
+      },
     );
   }
 }

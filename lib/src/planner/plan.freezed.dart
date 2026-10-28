@@ -306,7 +306,9 @@ mixin _$PlannedTrack {
 /// and is caught by its size instead of being spliced.
  String? get ifRange;/// Only on [TrackAssembly.ranges]: the joined file's extension, which
 /// ffmpeg reads the container from.
- String? get fileExtension;
+ String? get fileExtension;/// Estimated weight, null when unknown. Only a first guess: while the
+/// track downloads, the engine projects it from its finished pieces.
+ int? get estimatedBytes;
 /// Create a copy of PlannedTrack
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -319,16 +321,16 @@ $PlannedTrackCopyWith<PlannedTrack> get copyWith => _$PlannedTrackCopyWithImpl<P
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlannedTrack&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.assembly, assembly) || other.assembly == assembly)&&const DeepCollectionEquality().equals(other.pieces, pieces)&&(identical(other.playlist, playlist) || other.playlist == playlist)&&(identical(other.language, language) || other.language == language)&&(identical(other.label, label) || other.label == label)&&(identical(other.forced, forced) || other.forced == forced)&&(identical(other.codecs, codecs) || other.codecs == codecs)&&(identical(other.sourceId, sourceId) || other.sourceId == sourceId)&&(identical(other.ifRange, ifRange) || other.ifRange == ifRange)&&(identical(other.fileExtension, fileExtension) || other.fileExtension == fileExtension));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlannedTrack&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.assembly, assembly) || other.assembly == assembly)&&const DeepCollectionEquality().equals(other.pieces, pieces)&&(identical(other.playlist, playlist) || other.playlist == playlist)&&(identical(other.language, language) || other.language == language)&&(identical(other.label, label) || other.label == label)&&(identical(other.forced, forced) || other.forced == forced)&&(identical(other.codecs, codecs) || other.codecs == codecs)&&(identical(other.sourceId, sourceId) || other.sourceId == sourceId)&&(identical(other.ifRange, ifRange) || other.ifRange == ifRange)&&(identical(other.fileExtension, fileExtension) || other.fileExtension == fileExtension)&&(identical(other.estimatedBytes, estimatedBytes) || other.estimatedBytes == estimatedBytes));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,kind,assembly,const DeepCollectionEquality().hash(pieces),playlist,language,label,forced,codecs,sourceId,ifRange,fileExtension);
+int get hashCode => Object.hash(runtimeType,kind,assembly,const DeepCollectionEquality().hash(pieces),playlist,language,label,forced,codecs,sourceId,ifRange,fileExtension,estimatedBytes);
 
 @override
 String toString() {
-  return 'PlannedTrack(kind: $kind, assembly: $assembly, pieces: $pieces, playlist: $playlist, language: $language, label: $label, forced: $forced, codecs: $codecs, sourceId: $sourceId, ifRange: $ifRange, fileExtension: $fileExtension)';
+  return 'PlannedTrack(kind: $kind, assembly: $assembly, pieces: $pieces, playlist: $playlist, language: $language, label: $label, forced: $forced, codecs: $codecs, sourceId: $sourceId, ifRange: $ifRange, fileExtension: $fileExtension, estimatedBytes: $estimatedBytes)';
 }
 
 
@@ -339,7 +341,7 @@ abstract mixin class $PlannedTrackCopyWith<$Res>  {
   factory $PlannedTrackCopyWith(PlannedTrack value, $Res Function(PlannedTrack) _then) = _$PlannedTrackCopyWithImpl;
 @useResult
 $Res call({
- TrackKind kind, TrackAssembly assembly, List<PlannedPiece> pieces, String? playlist, String? language, String? label, bool forced, String? codecs, String? sourceId, String? ifRange, String? fileExtension
+ TrackKind kind, TrackAssembly assembly, List<PlannedPiece> pieces, String? playlist, String? language, String? label, bool forced, String? codecs, String? sourceId, String? ifRange, String? fileExtension, int? estimatedBytes
 });
 
 
@@ -356,7 +358,7 @@ class _$PlannedTrackCopyWithImpl<$Res>
 
 /// Create a copy of PlannedTrack
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? kind = null,Object? assembly = null,Object? pieces = null,Object? playlist = freezed,Object? language = freezed,Object? label = freezed,Object? forced = null,Object? codecs = freezed,Object? sourceId = freezed,Object? ifRange = freezed,Object? fileExtension = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? kind = null,Object? assembly = null,Object? pieces = null,Object? playlist = freezed,Object? language = freezed,Object? label = freezed,Object? forced = null,Object? codecs = freezed,Object? sourceId = freezed,Object? ifRange = freezed,Object? fileExtension = freezed,Object? estimatedBytes = freezed,}) {
   return _then(_self.copyWith(
 kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
 as TrackKind,assembly: null == assembly ? _self.assembly : assembly // ignore: cast_nullable_to_non_nullable
@@ -369,7 +371,8 @@ as bool,codecs: freezed == codecs ? _self.codecs : codecs // ignore: cast_nullab
 as String?,sourceId: freezed == sourceId ? _self.sourceId : sourceId // ignore: cast_nullable_to_non_nullable
 as String?,ifRange: freezed == ifRange ? _self.ifRange : ifRange // ignore: cast_nullable_to_non_nullable
 as String?,fileExtension: freezed == fileExtension ? _self.fileExtension : fileExtension // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,estimatedBytes: freezed == estimatedBytes ? _self.estimatedBytes : estimatedBytes // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
@@ -454,10 +457,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId,  String? ifRange,  String? fileExtension)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId,  String? ifRange,  String? fileExtension,  int? estimatedBytes)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _PlannedTrack() when $default != null:
-return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId,_that.ifRange,_that.fileExtension);case _:
+return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId,_that.ifRange,_that.fileExtension,_that.estimatedBytes);case _:
   return orElse();
 
 }
@@ -475,10 +478,10 @@ return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.lang
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId,  String? ifRange,  String? fileExtension)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId,  String? ifRange,  String? fileExtension,  int? estimatedBytes)  $default,) {final _that = this;
 switch (_that) {
 case _PlannedTrack():
-return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId,_that.ifRange,_that.fileExtension);case _:
+return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId,_that.ifRange,_that.fileExtension,_that.estimatedBytes);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -495,10 +498,10 @@ return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.lang
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId,  String? ifRange,  String? fileExtension)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( TrackKind kind,  TrackAssembly assembly,  List<PlannedPiece> pieces,  String? playlist,  String? language,  String? label,  bool forced,  String? codecs,  String? sourceId,  String? ifRange,  String? fileExtension,  int? estimatedBytes)?  $default,) {final _that = this;
 switch (_that) {
 case _PlannedTrack() when $default != null:
-return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId,_that.ifRange,_that.fileExtension);case _:
+return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.language,_that.label,_that.forced,_that.codecs,_that.sourceId,_that.ifRange,_that.fileExtension,_that.estimatedBytes);case _:
   return null;
 
 }
@@ -510,7 +513,7 @@ return $default(_that.kind,_that.assembly,_that.pieces,_that.playlist,_that.lang
 @JsonSerializable()
 
 class _PlannedTrack implements PlannedTrack {
-  const _PlannedTrack({required this.kind, required this.assembly, required final  List<PlannedPiece> pieces, this.playlist, this.language, this.label, this.forced = false, this.codecs, this.sourceId, this.ifRange, this.fileExtension}): _pieces = pieces;
+  const _PlannedTrack({required this.kind, required this.assembly, required final  List<PlannedPiece> pieces, this.playlist, this.language, this.label, this.forced = false, this.codecs, this.sourceId, this.ifRange, this.fileExtension, this.estimatedBytes}): _pieces = pieces;
   factory _PlannedTrack.fromJson(Map<String, dynamic> json) => _$PlannedTrackFromJson(json);
 
 @override final  TrackKind kind;
@@ -542,6 +545,9 @@ class _PlannedTrack implements PlannedTrack {
 /// Only on [TrackAssembly.ranges]: the joined file's extension, which
 /// ffmpeg reads the container from.
 @override final  String? fileExtension;
+/// Estimated weight, null when unknown. Only a first guess: while the
+/// track downloads, the engine projects it from its finished pieces.
+@override final  int? estimatedBytes;
 
 /// Create a copy of PlannedTrack
 /// with the given fields replaced by the non-null parameter values.
@@ -556,16 +562,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlannedTrack&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.assembly, assembly) || other.assembly == assembly)&&const DeepCollectionEquality().equals(other._pieces, _pieces)&&(identical(other.playlist, playlist) || other.playlist == playlist)&&(identical(other.language, language) || other.language == language)&&(identical(other.label, label) || other.label == label)&&(identical(other.forced, forced) || other.forced == forced)&&(identical(other.codecs, codecs) || other.codecs == codecs)&&(identical(other.sourceId, sourceId) || other.sourceId == sourceId)&&(identical(other.ifRange, ifRange) || other.ifRange == ifRange)&&(identical(other.fileExtension, fileExtension) || other.fileExtension == fileExtension));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlannedTrack&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.assembly, assembly) || other.assembly == assembly)&&const DeepCollectionEquality().equals(other._pieces, _pieces)&&(identical(other.playlist, playlist) || other.playlist == playlist)&&(identical(other.language, language) || other.language == language)&&(identical(other.label, label) || other.label == label)&&(identical(other.forced, forced) || other.forced == forced)&&(identical(other.codecs, codecs) || other.codecs == codecs)&&(identical(other.sourceId, sourceId) || other.sourceId == sourceId)&&(identical(other.ifRange, ifRange) || other.ifRange == ifRange)&&(identical(other.fileExtension, fileExtension) || other.fileExtension == fileExtension)&&(identical(other.estimatedBytes, estimatedBytes) || other.estimatedBytes == estimatedBytes));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,kind,assembly,const DeepCollectionEquality().hash(_pieces),playlist,language,label,forced,codecs,sourceId,ifRange,fileExtension);
+int get hashCode => Object.hash(runtimeType,kind,assembly,const DeepCollectionEquality().hash(_pieces),playlist,language,label,forced,codecs,sourceId,ifRange,fileExtension,estimatedBytes);
 
 @override
 String toString() {
-  return 'PlannedTrack(kind: $kind, assembly: $assembly, pieces: $pieces, playlist: $playlist, language: $language, label: $label, forced: $forced, codecs: $codecs, sourceId: $sourceId, ifRange: $ifRange, fileExtension: $fileExtension)';
+  return 'PlannedTrack(kind: $kind, assembly: $assembly, pieces: $pieces, playlist: $playlist, language: $language, label: $label, forced: $forced, codecs: $codecs, sourceId: $sourceId, ifRange: $ifRange, fileExtension: $fileExtension, estimatedBytes: $estimatedBytes)';
 }
 
 
@@ -576,7 +582,7 @@ abstract mixin class _$PlannedTrackCopyWith<$Res> implements $PlannedTrackCopyWi
   factory _$PlannedTrackCopyWith(_PlannedTrack value, $Res Function(_PlannedTrack) _then) = __$PlannedTrackCopyWithImpl;
 @override @useResult
 $Res call({
- TrackKind kind, TrackAssembly assembly, List<PlannedPiece> pieces, String? playlist, String? language, String? label, bool forced, String? codecs, String? sourceId, String? ifRange, String? fileExtension
+ TrackKind kind, TrackAssembly assembly, List<PlannedPiece> pieces, String? playlist, String? language, String? label, bool forced, String? codecs, String? sourceId, String? ifRange, String? fileExtension, int? estimatedBytes
 });
 
 
@@ -593,7 +599,7 @@ class __$PlannedTrackCopyWithImpl<$Res>
 
 /// Create a copy of PlannedTrack
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? kind = null,Object? assembly = null,Object? pieces = null,Object? playlist = freezed,Object? language = freezed,Object? label = freezed,Object? forced = null,Object? codecs = freezed,Object? sourceId = freezed,Object? ifRange = freezed,Object? fileExtension = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? kind = null,Object? assembly = null,Object? pieces = null,Object? playlist = freezed,Object? language = freezed,Object? label = freezed,Object? forced = null,Object? codecs = freezed,Object? sourceId = freezed,Object? ifRange = freezed,Object? fileExtension = freezed,Object? estimatedBytes = freezed,}) {
   return _then(_PlannedTrack(
 kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
 as TrackKind,assembly: null == assembly ? _self.assembly : assembly // ignore: cast_nullable_to_non_nullable
@@ -606,7 +612,8 @@ as bool,codecs: freezed == codecs ? _self.codecs : codecs // ignore: cast_nullab
 as String?,sourceId: freezed == sourceId ? _self.sourceId : sourceId // ignore: cast_nullable_to_non_nullable
 as String?,ifRange: freezed == ifRange ? _self.ifRange : ifRange // ignore: cast_nullable_to_non_nullable
 as String?,fileExtension: freezed == fileExtension ? _self.fileExtension : fileExtension // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,estimatedBytes: freezed == estimatedBytes ? _self.estimatedBytes : estimatedBytes // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 

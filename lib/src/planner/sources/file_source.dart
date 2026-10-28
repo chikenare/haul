@@ -61,6 +61,7 @@ class FileSource extends ResolvedSource {
       sourceId: 'file',
       ifRange: ranged ? _strongEtag : null,
       fileExtension: ranged ? extension : null,
+      estimatedBytes: response.contentLength,
     );
 
     return DownloadPlan(

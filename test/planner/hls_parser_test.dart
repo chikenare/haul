@@ -111,6 +111,19 @@ all.ts
       );
     });
 
+    test('byte ranges add up to the weight; without them it is unknown', () {
+      const ranged =
+          '#EXTM3U\n#EXT-X-MAP:URI="v.mp4",BYTERANGE="800@0"\n'
+          '#EXT-X-BYTERANGE:1000@800\n#EXTINF:4,\nv.mp4\n'
+          '#EXT-X-BYTERANGE:1200\n#EXTINF:4,\nv.mp4\n#EXT-X-ENDLIST\n';
+      expect(HlsParser.parseMedia(ranged, mediaBase).rangedBytes, 3000);
+
+      const mixed =
+          '#EXTM3U\n#EXT-X-BYTERANGE:1000@0\n#EXTINF:4,\nv.mp4\n'
+          '#EXTINF:4,\nw.ts\n#EXT-X-ENDLIST\n';
+      expect(HlsParser.parseMedia(mixed, mediaBase).rangedBytes, isNull);
+    });
+
     test('a live playlist cannot be downloaded', () {
       expect(
         () => HlsParser.parseMedia('#EXTM3U\n#EXTINF:6,\na.ts\n', mediaBase),

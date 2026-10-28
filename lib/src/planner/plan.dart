@@ -133,6 +133,10 @@ abstract class PlannedTrack with _$PlannedTrack {
     /// Only on [TrackAssembly.ranges]: the joined file's extension, which
     /// ffmpeg reads the container from.
     String? fileExtension,
+
+    /// Estimated weight, null when unknown. Only a first guess: while the
+    /// track downloads, the engine projects it from its finished pieces.
+    int? estimatedBytes,
   }) = _PlannedTrack;
 
   factory PlannedTrack.fromJson(Map<String, Object?> json) =>

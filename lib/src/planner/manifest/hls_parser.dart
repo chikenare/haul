@@ -68,6 +68,10 @@ abstract final class HlsParser {
     final seen = <Uri>{};
     var ended = false;
     var seconds = 0.0;
+    // Bytes the `EXT-X-BYTERANGE`s add up to, until a fragment comes
+    // without one.
+    int? rangedBytes = 0;
+    int? pendingRange;
 
     void add(String uri) {
       // A `data:` key lives inside the playlist: there is nothing to fetch
@@ -81,6 +85,8 @@ abstract final class HlsParser {
       if (line.startsWith('#EXTINF:')) {
         final value = line.substring(8).split(',').first;
         seconds += double.tryParse(value) ?? 0;
+      } else if (line.startsWith('#EXT-X-BYTERANGE:')) {
+        pendingRange = _rangeLength(line.substring(17));
       } else if (line.startsWith('#EXT-X-KEY:')) {
         final attrs = parseAttributes(line);
         final method = attrs['METHOD'] ?? 'NONE';
@@ -92,12 +98,24 @@ abstract final class HlsParser {
         }
         if (attrs['URI'] case final uri?) add(uri);
       } else if (line.startsWith('#EXT-X-MAP:')) {
-        if (parseAttributes(line)['URI'] case final uri?) add(uri);
+        final attrs = parseAttributes(line);
+        if (attrs['URI'] case final uri?) add(uri);
+        if (attrs['BYTERANGE'] case final range?) {
+          final length = _rangeLength(range);
+          rangedBytes = rangedBytes == null || length == null
+              ? null
+              : rangedBytes + length;
+        }
       } else if (line == '#EXT-X-ENDLIST' ||
           line == '#EXT-X-PLAYLIST-TYPE:VOD') {
         ended = true;
       } else if (!line.startsWith('#')) {
         add(line);
+        final length = pendingRange;
+        rangedBytes = rangedBytes == null || length == null
+            ? null
+            : rangedBytes + length;
+        pendingRange = null;
       }
     }
 
@@ -111,8 +129,13 @@ abstract final class HlsParser {
       baseUri: baseUri,
       resources: resources,
       duration: Duration(milliseconds: (seconds * 1000).round()),
+      rangedBytes: rangedBytes,
     );
   }
+
+  /// The `<n>` of a `<n>[@<o>]` byte range.
+  static int? _rangeLength(String value) =>
+      int.tryParse(value.split('@').first.trim());
 
   /// A tag's `KEY=VALUE,KEY="VALUE, with commas"`.
   static Map<String, String> parseAttributes(String line) {
@@ -207,6 +230,7 @@ class HlsMedia {
     required this.baseUri,
     required this.resources,
     required this.duration,
+    this.rangedBytes,
   });
 
   final String text;
@@ -215,6 +239,10 @@ class HlsMedia {
   /// Fragments, inits (`EXT-X-MAP`) and keys, in order of appearance.
   final List<Uri> resources;
   final Duration duration;
+
+  /// What every fragment weighs, when each one is an `EXT-X-BYTERANGE`:
+  /// exact rather than guessed from a bitrate. Null otherwise.
+  final int? rangedBytes;
 
   /// The same playlist with every URI swapped for the local name [names]
   /// gives it, resolved relative to the folder it is written to.

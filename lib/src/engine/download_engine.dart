@@ -984,6 +984,7 @@ class DownloadEngine {
 
     final missing = <_Piece>[];
     var settledBytes = 0;
+    final weights = [for (final track in plan.tracks) _TrackWeight(track)];
     for (final (t, track) in plan.tracks.indexed) {
       // One listing per track, not a lookup per piece: an episode is
       // thousands of fragments.
@@ -993,6 +994,7 @@ class DownloadEngine {
         final expected = piece.expectedBytes;
         if (size != null && (expected == null || size == expected)) {
           settledBytes += size;
+          weights[t].add(piece, size);
           continue;
         }
         // Cut short (a range, or a copy interrupted on desktop): asked
@@ -1024,7 +1026,7 @@ class DownloadEngine {
       donePieces: plan.pieceCount - missing.length,
       totalPieces: plan.pieceCount,
       bytes: settledBytes,
-      totalBytes: plan.expectedBytes,
+      totalBytes: _projectedBytes(plan, weights),
       // A file in ranges weighs exactly what its server said: counted by
       // bytes, not in 16 MB steps.
       segmented: plan.tracks.any(
@@ -1065,6 +1067,7 @@ class DownloadEngine {
       plan: plan,
       progress: progress,
       settledBytes: settledBytes,
+      weights: weights,
     );
     for (final piece in missing) {
       final taskId = piece.taskId(id, run);
@@ -1473,8 +1476,10 @@ class DownloadEngine {
     }
 
     job.settledBytes += size;
+    job.weights[piece.t].add(piece.planned, size);
     job.progress = job.progress.copyWith(
       donePieces: job.progress.donePieces + 1,
+      totalBytes: _projectedBytes(job.plan, job.weights),
     );
 
     if (job.pending.isEmpty) {
@@ -1496,9 +1501,25 @@ class DownloadEngine {
     final record = _records[job.id];
     if (record == null || record.status != DownloadStatus.downloading) return;
     final received = job.received.values.fold(0, (a, b) => a + b);
-    job.progress = job.progress.copyWith(bytes: job.settledBytes + received);
+    final bytes = job.settledBytes + received;
+    job.progress = job.progress.copyWith(
+      bytes: bytes,
+      totalBytes: max(job.progress.totalBytes, bytes),
+    );
     // Not written to disk: the next start counts it again from the pieces.
     _put(record.copyWith(progress: job.progress), persist: false);
+  }
+
+  /// The plan's weight, from what its finished pieces weigh as soon as
+  /// every track can be projected from them; its estimate until then.
+  static int _projectedBytes(DownloadPlan plan, List<_TrackWeight> weights) {
+    var total = 0;
+    for (final weight in weights) {
+      final bytes = weight.projected;
+      if (bytes == null) return plan.expectedBytes;
+      total += bytes;
+    }
+    return total;
   }
 
   /// Fails the download [job] runs, unless it already moved on (paused,
@@ -2206,6 +2227,47 @@ class _Piece {
       '${DownloadEngine._taskPrefix}-$id-$run-$t-$index';
 }
 
+/// What one track will weigh, projected from the pieces it already has: a
+/// bitrate is only a guess, and an HLS one is often the peak — twice the
+/// real size.
+class _TrackWeight {
+  _TrackWeight(this.track)
+    : _sized = track.pieces.fold(0, (sum, p) => sum + (p.expectedBytes ?? 0)),
+      _unsized = track.pieces.where((p) => p.expectedBytes == null).length;
+
+  /// Finished pieces of unknown size before their average is trusted — a
+  /// fiftieth of them on a long track, so a tiny init or key weighs little.
+  int get _sample => min(max(5, _unsized ~/ 50), _unsized);
+
+  final PlannedTrack track;
+
+  /// What the pieces of known size weigh together.
+  final int _sized;
+
+  /// Pieces whose size is only known once fetched.
+  final int _unsized;
+  int _unsizedDone = 0;
+  int _unsizedDoneBytes = 0;
+
+  void add(PlannedPiece piece, int size) {
+    if (piece.expectedBytes != null) return;
+    _unsizedDone++;
+    _unsizedDoneBytes += size;
+  }
+
+  /// Null when there is neither enough fetched to project from nor an
+  /// estimate. A subtitle without one weighs next to nothing.
+  int? get projected {
+    if (_unsizedDone >= _sample) {
+      return _unsizedDone == 0
+          ? _sized
+          : _sized + _unsizedDoneBytes * _unsized ~/ _unsizedDone;
+    }
+    return track.estimatedBytes ??
+        (track.kind == TrackKind.subtitle ? 0 : null);
+  }
+}
+
 /// The download in flight, in memory: one run of it.
 class _Job {
   _Job({
@@ -2214,6 +2276,7 @@ class _Job {
     required this.plan,
     required this.progress,
     required this.settledBytes,
+    required this.weights,
   });
 
   final String id;
@@ -2223,6 +2286,9 @@ class _Job {
   final DownloadPlan plan;
   DownloadProgress progress;
   int settledBytes;
+
+  /// One per track of [plan].
+  final List<_TrackWeight> weights;
 
   final Map<String, _Piece> pieces = {};
 

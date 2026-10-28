@@ -37,6 +37,7 @@ _PlannedTrack _$PlannedTrackFromJson(Map<String, dynamic> json) =>
       sourceId: json['sourceId'] as String?,
       ifRange: json['ifRange'] as String?,
       fileExtension: json['fileExtension'] as String?,
+      estimatedBytes: (json['estimatedBytes'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$PlannedTrackToJson(_PlannedTrack instance) =>
@@ -52,6 +53,7 @@ Map<String, dynamic> _$PlannedTrackToJson(_PlannedTrack instance) =>
       'sourceId': instance.sourceId,
       'ifRange': instance.ifRange,
       'fileExtension': instance.fileExtension,
+      'estimatedBytes': instance.estimatedBytes,
     };
 
 const _$TrackKindEnumMap = {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:haul/src/planner/errors.dart';
 import 'package:haul/src/planner/manifest/hls_parser.dart';
@@ -175,24 +176,37 @@ class HlsSource extends ResolvedSource {
       for (final r in [...audios, ...subtitles]) _fetchMedia(r.uri!),
     ]);
 
+    // A variant's BANDWIDTH counts the video with one audio of its group,
+    // chosen or not: that audio's guessed share goes to each one chosen.
+    final audioShare = variant.audioGroup != null ? _audioBandwidth : 0;
+    final videoBandwidth = max(variant.bandwidth - audioShare, 0);
+    int bytesAt(int bandwidth, HlsMedia media) =>
+        media.rangedBytes ?? bandwidth * media.duration.inSeconds ~/ 8;
+
+    final tracks = [
+      _track(
+        video,
+        TrackKind.video,
+        codecs: variant.codecs,
+        sourceId: _variantId(selection.videoId),
+        estimatedBytes: bytesAt(videoBandwidth, video),
+      ),
+      for (final (i, r) in audios.indexed)
+        _track(
+          rest[i],
+          TrackKind.audio,
+          language: r.language,
+          label: r.name,
+          sourceId: r.id,
+          estimatedBytes: bytesAt(_audioBandwidth, rest[i]),
+        ),
+    ];
+
     return DownloadPlan(
       extension: 'mkv',
-      expectedBytes: variant.bandwidth * video.duration.inSeconds ~/ 8,
+      expectedBytes: tracks.fold(0, (sum, t) => sum + t.estimatedBytes!),
       tracks: [
-        _track(
-          video,
-          TrackKind.video,
-          codecs: variant.codecs,
-          sourceId: _variantId(selection.videoId),
-        ),
-        for (final (i, r) in audios.indexed)
-          _track(
-            rest[i],
-            TrackKind.audio,
-            language: r.language,
-            label: r.name,
-            sourceId: r.id,
-          ),
+        ...tracks,
         for (final (i, r) in subtitles.indexed)
           if (_isTextMedia(rest[audios.length + i]))
             _subtitleTrack(rest[audios.length + i], r),
@@ -221,6 +235,7 @@ class HlsSource extends ResolvedSource {
     String? label,
     String? codecs,
     String? sourceId,
+    int? estimatedBytes,
   }) {
     final names = _names(media, fallback: 'bin');
     return PlannedTrack(
@@ -235,8 +250,12 @@ class HlsSource extends ResolvedSource {
       label: label,
       codecs: codecs,
       sourceId: sourceId,
+      estimatedBytes: estimatedBytes,
     );
   }
+
+  /// A typical stereo AAC: renditions do not say their bitrate.
+  static const _audioBandwidth = 128000;
 
   PlannedTrack _subtitleTrack(HlsMedia media, HlsRendition rendition) {
     final names = _names(media, fallback: 'vtt');
